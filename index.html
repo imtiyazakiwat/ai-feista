@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fiesta - Multi-AI Chat Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-purple: #bc8cff;
+            --model-chatgpt: #00a67e;
+            --model-claude: #d97706;
+            --model-gemini: #4285f4;
+            --model-grok: #1da1f2;
+            --model-deepseek: #8b5cf6;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .new-chat-btn {
+            width: 100%;
+            padding: 10px;
+            margin-top: 12px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .new-chat-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--text-muted);
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            padding: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            margin-bottom: 2px;
+        }
+
+        .sidebar-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .sidebar-item.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .chat-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .upgrade-btn {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue));
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 14px;
+            transition: opacity 0.2s;
+        }
+
+        .upgrade-btn:hover {
+            opacity: 0.9;
+        }
+
+        .settings-btn {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .settings-btn:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        /* Main Content */
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .model-pills {
+            display: flex;
+            gap: 8px;
+        }
+
+        .model-pill {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .model-pill {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        .model-pill.active {
+            opacity: 1;
+        }
+
+        .model-pill.chatgpt.active {
+            background: var(--model-chatgpt);
+            color: white;
+        }
+
+        .model-pill.claude.active {
+            background: var(--model-claude);
+            color: white;
+        }
+
+        .model-pill.gemini.active {
+            background: var(--model-gemini);
+            color: white;
+        }
+
+        .model-pill.grok.active {
+            background: var(--model-grok);
+            color: white;
+        }
+
+        .model-pill.deepseek.active {
+            background: var(--model-deepseek);
+            color: white;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .control-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            overflow: hidden;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .content-grid {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex: 1;
+            align-items: stretch;
+            padding-bottom: 10px;
+        }
+
+        .content-grid::-webkit-scrollbar {
+            height: 10px;
+        }
+
+        .content-grid::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 5px;
+        }
+
+        .content-grid::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        .content-grid::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        .content-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            width: 350px;
+            min-width: 350px;
+            height: calc(100% - 20px);
+            flex-shrink: 0;
+            margin-right: 10px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .card-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .card-icon.chatgpt {
+            background: var(--model-chatgpt);
+        }
+
+        .card-icon.gemini {
+            background: var(--model-gemini);
+        }
+
+        .card-icon.deepseek {
+            background: var(--model-deepseek);
+        }
+
+        .card-title-section {
+            flex: 1;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .card-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 0 20px 20px 20px;
+        }
+
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .chat-history::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-history::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .chat-message {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+        }
+
+        .chat-message.user {
+            background: var(--accent-blue);
+            color: white;
+            margin-left: 20px;
+        }
+
+        .chat-message.assistant {
+            background: var(--bg-tertiary);
+            margin-right: 20px;
+        }
+
+        .message-role {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .chat-message.user .message-role {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .message-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        .chat-message.user .message-content {
+            color: white;
+        }
+
+        .recommendation-section {
+            margin-bottom: 20px;
+        }
+
+        .recommendation-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .recommendation-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .book-item {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .book-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .book-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .book-author {
+            color: var(--accent-blue);
+            font-size: 13px;
+        }
+
+        .book-description {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.5;
+            margin-top: 8px;
+        }
+
+        /* Input Area */
+        .input-area {
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .input-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-field {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: none;
+        }
+
+        .input-field::placeholder {
+            color: var(--text-muted);
+        }
+
+        .attach-btn {
+            padding: 6px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+        }
+
+        .attach-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background: var(--accent-blue);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .send-btn:hover {
+            opacity: 0.9;
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/gpt4free-integration.js"></script>
+    <script src="js/models.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span>🎉</span>
+                    <span>AI Fiesta</span>
+                </div>
+                <button class="new-chat-btn">
+                    <span>➕</span>
+                    <span>New Chat</span>
+                </button>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <div class="section-title">Projects</div>
+                    <div class="sidebar-item">
+                        <span>📁</span>
+                        <span>Today</span>
+                        <span style="margin-left: auto; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">1</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="chat-item active">what are some most popular books around cyber security</div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="section-title">Friday, August 22nd</div>
+                    <div class="chat-item">do you know about ai...</div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="upgrade-btn">⚡ Upgrade Plan</button>
+                <button class="settings-btn">
+                    <span>⚙️</span>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Container -->
+        <div class="main-container">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <div class="model-pills" id="modelPills">
+                        <div class="model-pill chatgpt active" data-model="chatgpt">
+                            <img src="img/chatgpt.png" style="width: 16px; height: 16px; border-radius: 3px;">
+                            <span>ChatGPT</span>
+                        </div>
+                        <div class="model-pill claude active" data-model="claude">
+                            <img src="img/claude.png" style="width: 16px; height: 16px; border-radius: 3px;">
+                            <span>Claude</span>
+                        </div>
+                        <div class="model-pill gemini active" data-model="gemini">
+                            <img src="img/gemini.jpeg" style="width: 16px; height: 16px; border-radius: 3px;">
+                            <span>Gemini</span>
+                        </div>
+                        <div class="model-pill grok active" data-model="grok">
+                            <img src="img/grok.png" style="width: 16px; height: 16px; border-radius: 3px;">
+                            <span>Grok</span>
+                        </div>
+                        <div class="model-pill deepseek active" data-model="deepseek">
+                            <img src="img/deepseek.jpeg" style="width: 16px; height: 16px; border-radius: 3px;">
+                            <span>DeepSeek</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="header-controls">
+                        <button class="control-btn">📋</button>
+                        <button class="control-btn">🔄</button>
+                        <button class="control-btn">👁️</button>
+                        <button class="control-btn">📊</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main class="content">
+                <div class="content-grid" id="contentGrid">
+                    <!-- Response cards will be added here dynamically -->
+                </div>
+            </main>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <button class="attach-btn">📎</button>
+                        <input type="text" class="input-field" id="messageInput" placeholder="Ask me anything..." />
+                    </div>
+                    <button class="send-btn" id="sendBtn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize the app
+        let selectedModels = ['chatgpt', 'claude', 'gemini', 'grok', 'deepseek'];
+        let messageHistory = [];
+        let currentMessageId = null;
+        let pendingResponses = new Set();
+
+        // Model configurations with exact model IDs
+        const modelConfigs = {
+            chatgpt: { name: 'ChatGPT', icon: 'img/chatgpt.png', color: '#00a67e', modelId: 'gpt-5-2025-08-07' },
+            claude: { name: 'Claude', icon: 'img/claude.png', color: '#d97706', modelId: 'claude-opus-4-latest' },
+            gemini: { name: 'Gemini', icon: 'img/gemini.jpeg', color: '#4285f4', modelId: 'gemini-2.0-flash' },
+            grok: { name: 'Grok', icon: 'img/grok.png', color: '#1da1f2', modelId: 'grok-3-fast' },
+            deepseek: { name: 'DeepSeek', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'openrouter:deepseek/deepseek-chat-v3-0324:free' }
+        };
+
+        // Handle model pill clicks
+        document.querySelectorAll('.model-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                const model = pill.dataset.model;
+                if (pill.classList.contains('active')) {
+                    pill.classList.remove('active');
+                    selectedModels = selectedModels.filter(m => m !== model);
+                } else {
+                    pill.classList.add('active');
+                    selectedModels.push(model);
+                }
+            });
+        });
+
+        // Handle send button
+        const sendBtn = document.getElementById('sendBtn');
+        const messageInput = document.getElementById('messageInput');
+        const contentGrid = document.getElementById('contentGrid');
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || selectedModels.length === 0) return;
+
+            // Prevent duplicate sends
+            if (currentMessageId) return;
+            currentMessageId = Date.now().toString();
+            
+            // Track pending responses
+            pendingResponses = new Set(selectedModels);
+
+            // Clear input
+            messageInput.value = '';
+            
+            // Don't clear previous content - append instead
+            // contentGrid.innerHTML = '';
+
+            // Create cards for each selected model if they don't exist
+            selectedModels.forEach(modelId => {
+                if (!document.getElementById(`card-${modelId}`)) {
+                    createModelCard(modelId);
+                }
+                // Add message to card
+                addMessageToCard(modelId, message, 'user');
+            });
+
+            // Send message to GPT4Free
+            if (window.gpt4FreeIntegration) {
+                const modelIds = selectedModels.map(modelId => {
+                    // Use exact model IDs from config
+                    return modelConfigs[modelId].modelId;
+                });
+
+                // Create reverse mapping
+                const reverseMapping = {};
+                Object.keys(modelConfigs).forEach(key => {
+                    reverseMapping[modelConfigs[key].modelId] = key;
+                });
+
+                await window.gpt4FreeIntegration.sendMessageToAllModels(
+                    message,
+                    modelIds,
+                    (modelId, chunk, fullText) => {
+                        console.log(`[DEBUG] Streaming chunk for ${modelId}:`, {
+                            modelId,
+                            chunk,
+                            fullText,
+                            chunkType: typeof chunk,
+                            fullTextType: typeof fullText
+                        });
+                        
+                        // Special debug for ChatGPT-5
+                        if (modelId === 'gpt-5-2025-08-07') {
+                            console.log('[DEBUG ChatGPT-5] Raw chunk:', chunk);
+                            console.log('[DEBUG ChatGPT-5] Full text so far:', fullText);
+                        }
+                        
+                        const uiModelId = reverseMapping[modelId] || modelId;
+                        updateMessageInCard(uiModelId, fullText, true);
+                    },
+                    (modelId, result) => {
+                        console.log(`[DEBUG] Complete response for ${modelId}:`, {
+                            modelId,
+                            result,
+                            resultType: typeof result,
+                            hasText: result && result.text !== undefined
+                        });
+                        
+                        // Special debug for ChatGPT-5
+                        if (modelId === 'gpt-5-2025-08-07') {
+                            console.log('[DEBUG ChatGPT-5] Final result object:', result);
+                            console.log('[DEBUG ChatGPT-5] Result.text:', result.text);
+                        }
+                        
+                        const uiModelId = reverseMapping[modelId] || modelId;
+                        updateMessageInCard(uiModelId, result.text, false);
+                        
+                        // Mark this model as complete
+                        pendingResponses.delete(uiModelId);
+                        console.log(`[DEBUG] Model ${uiModelId} completed. Remaining: ${pendingResponses.size}`);
+                        
+                        // Reset currentMessageId only when all models are done
+                        if (pendingResponses.size === 0) {
+                            console.log('[DEBUG] All models completed, resetting currentMessageId');
+                            currentMessageId = null;
+                        }
+                    },
+                    (modelId, error) => {
+                        const uiModelId = reverseMapping[modelId] || modelId;
+                        updateMessageInCard(uiModelId, `Error: ${error.message}`, false);
+                        
+                        // Mark this model as complete (even if error)
+                        pendingResponses.delete(uiModelId);
+                        console.log(`[DEBUG] Model ${uiModelId} errored. Remaining: ${pendingResponses.size}`);
+                        
+                        // Reset currentMessageId only when all models are done
+                        if (pendingResponses.size === 0) {
+                            console.log('[DEBUG] All models completed, resetting currentMessageId');
+                            currentMessageId = null;
+                        }
+                    }
+                );
+            } else {
+                // Fallback with mock responses
+                selectedModels.forEach(modelId => {
+                    setTimeout(() => {
+                        const mockResponse = `This is a mock response from ${modelConfigs[modelId].name} for: "${message}"\n\nThe GPT4Free integration is still loading. Please wait a moment and try again.`;
+                        updateMessageInCard(modelId, mockResponse, false);
+                    }, 1000);
+                });
+                currentMessageId = null;
+            }
+        }
+
+        function createModelCard(modelId) {
+            console.log(`[DEBUG createModelCard] Creating card for: ${modelId}`);
+            const config = modelConfigs[modelId];
+            
+            if (!contentGrid) {
+                console.error('[DEBUG createModelCard] contentGrid is null!');
+                contentGrid = document.getElementById('contentGrid');
+            }
+            
+            const cardHTML = `
+                <div class="content-card" id="card-${modelId}">
+                    <div class="card-header">
+                        <div class="card-icon" style="background: ${config.color}">
+                            <img src="${config.icon}" alt="${config.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;">
+                        </div>
+                        <div class="card-title-section">
+                            <div class="card-title">${config.name}</div>
+                            <div class="card-subtitle" style="font-size: 10px; opacity: 0.7;">${config.modelId}</div>
+                        </div>
+                    </div>
+                    <div class="card-content" id="content-${modelId}">
+                        <div class="chat-history" id="chat-${modelId}"></div>
+                    </div>
+                </div>
+            `;
+            contentGrid.insertAdjacentHTML('beforeend', cardHTML);
+            console.log(`[DEBUG createModelCard] Card created for ${modelId}. Total cards:`, contentGrid.children.length);
+        }
+
+        function addMessageToCard(modelId, message, role) {
+            const chatHistory = document.getElementById(`chat-${modelId}`);
+            if (!chatHistory) return;
+            
+            const messageHTML = `
+                <div class="chat-message ${role}">
+                    <div class="message-role">${role === 'user' ? 'You' : modelConfigs[modelId].name}</div>
+                    <div class="message-content">${message}</div>
+                </div>
+            `;
+            chatHistory.insertAdjacentHTML('beforeend', messageHTML);
+            
+            // Add placeholder for assistant response if user message
+            if (role === 'user') {
+                const placeholderHTML = `
+                    <div class="chat-message assistant" id="response-${modelId}-${currentMessageId}">
+                        <div class="message-role">${modelConfigs[modelId].name}</div>
+                        <div class="message-content"><span style="color: var(--text-muted); font-style: italic;">Thinking...</span></div>
+                    </div>
+                `;
+                chatHistory.insertAdjacentHTML('beforeend', placeholderHTML);
+            }
+            
+            // Auto-scroll to bottom
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function updateMessageInCard(modelId, content, isStreaming) {
+            const responseElId = `response-${modelId}-${currentMessageId}`;
+            console.log(`[DEBUG updateMessageInCard] Looking for element: ${responseElId}`);
+            const responseEl = document.getElementById(responseElId);
+            
+            if (responseEl) {
+                console.log(`[DEBUG updateMessageInCard] Found element, updating content`);
+                const messageContent = responseEl.querySelector('.message-content');
+                if (messageContent) {
+                    const formattedContent = content.replace(/\n/g, '<br>');
+                    messageContent.innerHTML = formattedContent;
+                    if (!isStreaming) {
+                        messageContent.style.color = '';
+                        messageContent.style.fontStyle = '';
+                    }
+                }
+                // Auto-scroll
+                const chatHistory = document.getElementById(`chat-${modelId}`);
+                if (chatHistory) {
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                }
+            } else {
+                console.error(`[DEBUG updateMessageInCard] Element not found: ${responseElId}`);
+                // List all response elements
+                const allResponseEls = document.querySelectorAll('[id^="response-"]');
+                console.log(`[DEBUG updateMessageInCard] Available response elements:`, Array.from(allResponseEls).map(el => el.id));
+            }
+        }
+
+        // Handle Enter key
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        // Wait for GPT4Free to initialize
+        function checkGPT4Free() {
+            if (window.gpt4FreeIntegration) {
+                console.log('GPT4Free integration ready');
+            } else {
+                console.log('Waiting for GPT4Free...');
+                setTimeout(checkGPT4Free, 1000);
+            }
+        }
+        
+        checkGPT4Free();
+    </script>
+</body>
+</html>

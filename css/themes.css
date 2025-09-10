@@ -1,0 +1,125 @@
+/* Light Theme (Default) */
+.theme-light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Theme */
+.theme-dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+
+  /* Override light theme variables */
+  --light: var(--bg-primary);
+  --light-secondary: var(--bg-secondary);
+  --dark: var(--text-primary);
+  --dark-secondary: var(--text-secondary);
+  --comparison-border: var(--border-color);
+}
+
+/* Dark theme specific styles */
+.theme-dark .header {
+  background: rgba(15, 23, 42, 0.8);
+  border-bottom-color: var(--border-color);
+}
+
+.theme-dark .sidebar {
+  background: var(--bg-secondary);
+  border-right-color: var(--border-color);
+}
+
+.theme-dark .model-card {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.theme-dark .model-card-header,
+.theme-dark .model-card-footer {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.theme-dark .input-wrapper {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.theme-dark .modal {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.theme-dark .modal-header,
+.theme-dark .modal-footer {
+  border-color: var(--border-color);
+}
+
+.theme-dark .api-key-input input {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.theme-dark .api-key-input input::placeholder {
+  color: var(--text-muted);
+}
+
+.theme-dark .model-pill {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.theme-dark .theme-toggle .theme-icon::before {
+  content: "☀️";
+}
+
+.theme-light .theme-toggle .theme-icon::before {
+  content: "🌙";
+}
+
+/* Theme transition */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --primary: #0000ff;
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --border-color: #000000;
+  }
+
+  .theme-dark {
+    --primary: #00ffff;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --border-color: #ffffff;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
