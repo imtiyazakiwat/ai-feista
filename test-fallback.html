@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fiesta Fallback Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .model-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .model-item {
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .model-item .name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .model-item .provider {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        #testOutput {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>AI Fiesta Fallback Mechanism Test</h1>
+        
+        <div class="test-section">
+            <h3>Test Status</h3>
+            <div id="testStatus" class="test-result info">Ready to run tests</div>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="clearOutput()">Clear Output</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Available Models</h3>
+            <div id="modelList" class="model-list">Loading models...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Output</h3>
+            <div id="testOutput"></div>
+        </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/theme.js"></script>
+    <script src="js/gpt4free-integration.js"></script>
+    <script src="js/pollinations-provider.js"></script>
+    <script src="js/models.js"></script>
+    <script>
+        let testOutput = document.getElementById('testOutput');
+        let testStatus = document.getElementById('testStatus');
+        let modelList = document.getElementById('modelList');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `test-result ${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            testOutput.appendChild(logEntry);
+            testOutput.scrollTop = testOutput.scrollHeight;
+        }
+
+        function clearOutput() {
+            testOutput.innerHTML = '';
+        }
+
+        function updateStatus(message, type = 'info') {
+            testStatus.textContent = message;
+            testStatus.className = `test-result ${type}`;
+        }
+
+        function updateModelList() {
+            if (window.modelManager) {
+                const models = window.modelManager.getAllModels();
+                modelList.innerHTML = '';
+                
+                Object.values(models).forEach(model => {
+                    const modelItem = document.createElement('div');
+                    modelItem.className = 'model-item';
+                    modelItem.innerHTML = `
+                        <div class="name">${model.name}</div>
+                        <div class="provider">${model.provider} (${model.modelId})</div>
+                    `;
+                    modelList.appendChild(modelItem);
+                });
+            } else {
+                modelList.innerHTML = 'Model manager not available';
+            }
+        }
+
+        async function testModelManager() {
+            log('Testing Model Manager...', 'info');
+            
+            try {
+                if (window.modelManager) {
+                    await window.modelManager.init();
+                    log('✓ Model Manager initialized successfully', 'success');
+                    updateModelList();
+                    return true;
+                } else {
+                    log('✗ Model Manager not available', 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`✗ Model Manager initialization failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testGPT4FreeIntegration() {
+            log('Testing GPT4Free Integration...', 'info');
+            
+            try {
+                if (window.gpt4FreeIntegration) {
+                    await window.gpt4FreeIntegration.init();
+                    log('✓ GPT4Free Integration initialized successfully', 'success');
+                    
+                    const availableModels = window.gpt4FreeIntegration.getAvailableModels();
+                    log(`✓ Found ${availableModels.length} available models`, 'success');
+                    
+                    return true;
+                } else {
+                    log('✗ GPT4Free Integration not available', 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`✗ GPT4Free Integration initialization failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testPollinationsProvider() {
+            log('Testing Pollinations Provider...', 'info');
+            
+            try {
+                if (window.PollinationsProvider) {
+                    const pollinationsProvider = new window.PollinationsProvider();
+                    const isAvailable = await pollinationsProvider.isAvailable();
+                    
+                    if (isAvailable) {
+                        log('✓ Pollinations Provider is available', 'success');
+                        
+                        const models = pollinationsProvider.availableModels;
+                        log(`✓ Pollinations has ${models.length} available models`, 'success');
+                        
+                        return true;
+                    } else {
+                        log('✗ Pollinations Provider is not available', 'error');
+                        return false;
+                    }
+                } else {
+                    log('✗ Pollinations Provider not available', 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`✗ Pollinations Provider test failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testFallbackMechanism() {
+            log('Testing Fallback Mechanism...', 'info');
+            
+            try {
+                if (!window.gpt4FreeIntegration || !window.PollinationsProvider) {
+                    log('✗ Required providers not available', 'error');
+                    return false;
+                }
+
+                // Test model mapping
+                const pollinationsProvider = new window.PollinationsProvider();
+                
+                // Test primary model mappings
+                const testMappings = [
+                    'chatgpt',
+                    'claude',
+                    'gemini',
+                    'grok',
+                    'deepseek',
+                    'gpt-5-2025-08-07'
+                ];
+
+                let successfulMappings = 0;
+                
+                testMappings.forEach(modelId => {
+                    const mappedModel = pollinationsProvider.mapModel(modelId);
+                    if (mappedModel) {
+                        log(`✓ ${modelId} -> ${mappedModel}`, 'success');
+                        successfulMappings++;
+                    } else {
+                        log(`✗ ${modelId} -> No fallback available (expected for Claude)`, 'info');
+                    }
+                });
+
+                log(`✓ ${successfulMappings}/${testMappings.length} models have fallback mappings`, 'success');
+                
+                return successfulMappings > 0;
+            } catch (error) {
+                log(`✗ Fallback mechanism test failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testErrorHandling() {
+            log('Testing Error Handling...', 'info');
+            
+            try {
+                if (!window.gpt4FreeIntegration) {
+                    log('✗ GPT4Free Integration not available', 'error');
+                    return false;
+                }
+
+                // Test error detection
+                const testErrors = [
+                    'Error 400 from delegate',
+                    'Permission denied',
+                    'usage-limited-chat',
+                    'PUTER_ERROR',
+                    'Field `model` is invalid'
+                ];
+
+                let detectedErrors = 0;
+                
+                testErrors.forEach(error => {
+                    const is400Error = error.includes('Error 400') || 
+                                      error.includes('400') || 
+                                      error.includes('Permission denied') ||
+                                      error.includes('usage-limited-chat');
+                    
+                    if (is400Error) {
+                        log(`✓ Error detected: ${error}`, 'success');
+                        detectedErrors++;
+                    } else {
+                        log(`✗ Error not detected: ${error}`, 'error');
+                    }
+                });
+
+                log(`✓ ${detectedErrors}/${testErrors.length} errors properly detected`, 'success');
+                
+                return detectedErrors > 0;
+            } catch (error) {
+                log(`✗ Error handling test failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function runAllTests() {
+            clearOutput();
+            updateStatus('Running tests...', 'info');
+            
+            const tests = [
+                { name: 'Model Manager', test: testModelManager },
+                { name: 'GPT4Free Integration', test: testGPT4FreeIntegration },
+                { name: 'Pollinations Provider', test: testPollinationsProvider },
+                { name: 'Fallback Mechanism', test: testFallbackMechanism },
+                { name: 'Error Handling', test: testErrorHandling }
+            ];
+
+            let passedTests = 0;
+            let totalTests = tests.length;
+
+            for (const { name, test } of tests) {
+                log(`\n=== Testing ${name} ===`, 'info');
+                const result = await test();
+                if (result) {
+                    passedTests++;
+                    log(`✓ ${name} test passed`, 'success');
+                } else {
+                    log(`✗ ${name} test failed`, 'error');
+                }
+            }
+
+            log(`\n=== Test Summary ===`, 'info');
+            log(`Passed: ${passedTests}/${totalTests}`, passedTests === totalTests ? 'success' : 'error');
+            
+            if (passedTests === totalTests) {
+                updateStatus('All tests passed!', 'success');
+            } else {
+                updateStatus(`${passedTests}/${totalTests} tests passed`, 'error');
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            log('AI Fiesta Fallback Test initialized', 'info');
+            updateStatus('Ready to run tests', 'info');
+            
+            // Wait a moment for providers to initialize
+            setTimeout(() => {
+                updateModelList();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

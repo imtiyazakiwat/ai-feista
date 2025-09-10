@@ -65,18 +65,37 @@ class ModelManager {
 
       // Map known model patterns to our standard models
       const modelMappings = {
+        // ChatGPT models
         'gpt-4o': 'chatgpt',
         'gpt-4': 'chatgpt',
         'gpt-3.5-turbo': 'chatgpt',
+        'gpt-5': 'chatgpt',
+        'gpt-5-2025-08-07': 'chatgpt',
+        
+        // Claude models
         'claude-3-haiku': 'claude',
         'claude-3-sonnet': 'claude',
         'claude-3-opus': 'claude',
+        'claude-3-5-sonnet-latest': 'claude',
+        'claude-opus-4-latest': 'claude',
+        
+        // Gemini models
         'gemini-pro': 'gemini',
         'gemini-1.5': 'gemini',
+        'gemini-2.0-flash': 'gemini',
+        
+        // Grok models
         'grok': 'grok',
         'grok-2': 'grok',
+        'grok-3-fast': 'grok',
+        
+        // DeepSeek models
         'deepseek': 'deepseek',
-        'deepseek-chat': 'deepseek'
+        'deepseek-chat': 'deepseek',
+        'deepseek-v3': 'deepseek',
+        'deepseek-ai/DeepSeek-R1': 'deepseek',
+        'deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free': 'deepseek',
+        'openrouter:deepseek/deepseek-chat-v3-0324:free': 'deepseek'
       };
 
       availableModels.forEach((model, index) => {
@@ -162,6 +181,63 @@ class ModelManager {
         color: "#8B5CF6",
         icon: "🔍",
         provider: "gpt4free"
+      },
+      // Pollinations fallback models
+      "deepseek-reasoning": {
+        name: "DeepSeek Reasoning",
+        modelId: "deepseek-reasoning",
+        color: "#8B5CF6",
+        icon: "🔍",
+        provider: "pollinations"
+      },
+      "gemini-2.5-flash-lite": {
+        name: "Gemini 2.5 Flash Lite",
+        modelId: "gemini",
+        color: "#4285F4",
+        icon: "💎",
+        provider: "pollinations"
+      },
+      "mistral-small-3.1-24b": {
+        name: "Mistral Small 3.1",
+        modelId: "mistral",
+        color: "#10B981",
+        icon: "🌿",
+        provider: "pollinations"
+      },
+      "nova-micro-v1": {
+        name: "Amazon Nova Micro",
+        modelId: "nova-fast",
+        color: "#F59E0B",
+        icon: "🚀",
+        provider: "pollinations"
+      },
+      "gpt-5-nano": {
+        name: "OpenAI GPT-5 Nano",
+        modelId: "openai-fast",
+        color: "#00A67E",
+        icon: "🤖",
+        provider: "pollinations"
+      },
+      "gpt-4.1": {
+        name: "OpenAI GPT-4.1",
+        modelId: "openai-large",
+        color: "#00A67E",
+        icon: "🤖",
+        provider: "pollinations"
+      },
+      "o4-mini": {
+        name: "OpenAI o4-mini",
+        modelId: "openai-reasoning",
+        color: "#00A67E",
+        icon: "🤖",
+        provider: "pollinations"
+      },
+      "qwen2.5-coder-32b": {
+        name: "Qwen 2.5 Coder",
+        modelId: "qwen-coder",
+        color: "#8B5CF6",
+        icon: "💻",
+        provider: "pollinations"
       }
     };
 

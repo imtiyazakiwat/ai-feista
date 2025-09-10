@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Responsiveness Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .device-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+        .test-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .test-link:hover {
+            background: #0056b3;
+        }
+        .breakpoint-indicator {
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border-radius: 4px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 768px) {
+            .breakpoint-indicator::after {
+                content: " - Tablet View (≤768px)";
+            }
+            body {
+                padding: 10px;
+            }
+        }
+        @media (max-width: 480px) {
+            .breakpoint-indicator::after {
+                content: " - Mobile View (≤480px)" !important;
+            }
+        }
+        @media (min-width: 769px) {
+            .breakpoint-indicator::after {
+                content: " - Desktop View (>768px)";
+            }
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .status.complete {
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Fiesta - Mobile Responsiveness Test</h1>
+        
+        <div class="breakpoint-indicator">Current Breakpoint</div>
+        
+        <div class="device-info" id="deviceInfo">
+            Loading device information...
+        </div>
+
+        <div class="test-section">
+            <h2>✅ Implemented Features</h2>
+            <ul class="feature-list">
+                <li>📱 Mobile responsive design with media queries <span class="status complete">Complete</span></li>
+                <li>☰ Three-dot sidebar toggle button <span class="status complete">Complete</span></li>
+                <li>🎨 Responsive sidebar that collapses on mobile <span class="status complete">Complete</span></li>
+                <li>⚡ Three-dot menu for each chat item <span class="status complete">Complete</span></li>
+                <li>✏️ Chat rename functionality with modal <span class="status complete">Complete</span></li>
+                <li>🗑️ Chat delete functionality with confirmation <span class="status complete">Complete</span></li>
+                <li>🌐 Overlay for mobile sidebar <span class="status complete">Complete</span></li>
+                <li>📏 Responsive content cards <span class="status complete">Complete</span></li>
+                <li>📝 Responsive input area <span class="status complete">Complete</span></li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>Test the App</h2>
+            <p>Click the link below to test the mobile responsive features:</p>
+            <a href="index.html" class="test-link" target="_blank">Open AI Fiesta App</a>
+        </div>
+
+        <div class="test-section">
+            <h2>How to Test Mobile Features</h2>
+            <ol>
+                <li><strong>Desktop (>768px):</strong> Sidebar is always visible, three-dot toggle button is hidden</li>
+                <li><strong>Tablet (≤768px):</strong> Sidebar collapses by default, three-dot toggle button appears</li>
+                <li><strong>Mobile (≤480px):</strong> Full-width sidebar when opened, optimized mobile layout</li>
+            </ol>
+            
+            <h3>Test Instructions:</h3>
+            <ol>
+                <li>Resize your browser window to test different breakpoints</li>
+                <li>Click the three-dot button (top-left) to toggle the sidebar</li>
+                <li>Hover over chat items to see the three-dot menu</li>
+                <li>Click the three-dots on a chat to see rename/delete options</li>
+                <li>Try renaming a chat</li>
+                <li>Try deleting a chat (with confirmation)</li>
+                <li>Test on actual mobile devices for best results</li>
+            </ol>
+        </div>
+
+        <div class="test-section">
+            <h2>Chrome DevTools Mobile Testing</h2>
+            <p>To test mobile view in Chrome:</p>
+            <ol>
+                <li>Right-click and select "Inspect" or press F12</li>
+                <li>Click the device toggle toolbar icon (or press Ctrl+Shift+M)</li>
+                <li>Select a device preset or responsive mode</li>
+                <li>Test different screen sizes and orientations</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function updateDeviceInfo() {
+            const info = document.getElementById('deviceInfo');
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const pixelRatio = window.devicePixelRatio || 1;
+            const orientation = width > height ? 'Landscape' : 'Portrait';
+            const touchSupport = 'ontouchstart' in window ? 'Yes' : 'No';
+            
+            let deviceType = 'Desktop';
+            if (width <= 480) {
+                deviceType = 'Mobile';
+            } else if (width <= 768) {
+                deviceType = 'Tablet';
+            }
+            
+            info.innerHTML = `
+                <strong>Device Information:</strong><br>
+                Screen Width: ${width}px<br>
+                Screen Height: ${height}px<br>
+                Device Pixel Ratio: ${pixelRatio}<br>
+                Orientation: ${orientation}<br>
+                Touch Support: ${touchSupport}<br>
+                Device Type: ${deviceType}<br>
+                User Agent: ${navigator.userAgent.substring(0, 50)}...
+            `;
+        }
+
+        updateDeviceInfo();
+        window.addEventListener('resize', updateDeviceInfo);
+    </script>
+</body>
+</html>

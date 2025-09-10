@@ -365,6 +365,8 @@
                     <option value="gpt-4o">GPT-4o</option>
                     <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                     <option value="claude-3-haiku">Claude 3 Haiku</option>
+                    <option value="deepinfra/meta-llama/Meta-Llama-3-70B-Instruct">DeepInfra Llama 3 70B</option>
+                    <option value="deepinfra/mistralai/Mixtral-8x7B-Instruct-v0.1">DeepInfra Mixtral 8x7B</option>
                 </select>
                 <div class="status-indicator" id="statusIndicator">
                     <div class="status-dot status-warning"></div>
@@ -441,17 +443,17 @@
                     if (Puter) {
                         client = new Puter();
                         console.log('Client created with Puter provider');
-                    } else if (PollinationsAI) {
-                        client = new PollinationsAI({ apiKey: 'optional' });
-                        console.log('Client created with PollinationsAI provider');
                     } else if (DeepInfra) {
                         client = new DeepInfra({ apiKey: 'optional' });
                         console.log('Client created with DeepInfra provider');
+                    } else if (PollinationsAI) {
+                        client = new PollinationsAI({ apiKey: 'optional' });
+                        console.log('Client created with PollinationsAI provider');
                     } else if (Client) {
                         // Fallback to generic client with local GPT4Free instance
-                        client = new Client({ 
-                            baseUrl: 'https://g4f.dev/v1', 
-                            apiKey: 'free' 
+                        client = new Client({
+                            baseUrl: 'https://g4f.dev/v1',
+                            apiKey: 'free'
                         });
                         console.log('Client created with generic Client provider');
                     } else {
@@ -957,13 +959,18 @@
             separator.textContent = '--- Default Models ---';
             modelSelector.appendChild(separator);
 
-            // Add some common default models
+            // Add some common default models including DeepInfra-specific ones
             const defaultModels = [
                 { id: 'gpt-4.1', name: 'GPT-4.1' },
                 { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
                 { id: 'deepseek-v3', name: 'DeepSeek V3' },
                 { id: 'gpt-4o', name: 'GPT-4o' },
-                { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+                { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
+                // DeepInfra specific models
+                { id: 'deepinfra/meta-llama/Meta-Llama-3-70B-Instruct', name: 'DeepInfra Llama 3 70B' },
+                { id: 'deepinfra/mistralai/Mixtral-8x7B-Instruct-v0.1', name: 'DeepInfra Mixtral 8x7B' },
+                { id: 'deepinfra/microsoft/WizardLM-2-8x22B', name: 'DeepInfra WizardLM 2 8x22B' },
+                { id: 'deepinfra/codellama/CodeLlama-70B-Instruct-hf', name: 'DeepInfra Code Llama 70B' }
             ];
 
             defaultModels.forEach(model => {

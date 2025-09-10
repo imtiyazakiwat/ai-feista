@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Model Configuration</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+        }
+        .success { border-color: #00ff00; color: #00ff00; }
+        .error { border-color: #ff0000; color: #ff0000; }
+        .info { border-color: #ffff00; color: #ffff00; }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        #output {
+            max-height: 500px;
+            overflow-y: auto;
+            background: #000;
+            padding: 10px;
+            margin-top: 20px;
+            border: 1px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Model Configuration Test</h1>
+    
+    <div>
+        <button onclick="testGPT4Free()">Test GPT4Free Integration</button>
+        <button onclick="testChatGPT()">Test ChatGPT Response</button>
+        <button onclick="testTitleGeneration()">Test Title Generation</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+    
+    <div id="output"></div>
+    
+    <!-- Load GPT4Free -->
+    <script type="module">
+        import { Client } from 'https://g4f.dev/dist/js/client.js';
+        window.GPT4FreeClient = Client;
+    </script>
+    
+    <!-- Load the integration -->
+    <script src="js/gpt4free-integration.js"></script>
+    
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `[${timestamp}] ${message}`;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            log('Output cleared', 'info');
+        }
+        
+        async function testGPT4Free() {
+            log('Testing GPT4Free Integration...', 'info');
+            
+            // Wait for integration to be ready
+            let attempts = 0;
+            while (!window.gpt4FreeIntegration && attempts < 30) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            
+            if (!window.gpt4FreeIntegration) {
+                log('GPT4Free integration not loaded!', 'error');
+                return;
+            }
+            
+            log('GPT4Free integration loaded', 'success');
+            
+            // Check available models
+            const models = window.gpt4FreeIntegration.getAvailableModels();
+            log(`Available models: ${models.length}`, 'info');
+            
+            models.forEach(model => {
+                const modelInfo = typeof model === 'string' ? model : (model.id || model.name);
+                log(`  - ${modelInfo}`, 'info');
+            });
+        }
+        
+        async function testChatGPT() {
+            log('Testing ChatGPT (gpt-4) response...', 'info');
+            
+            if (!window.gpt4FreeIntegration) {
+                log('GPT4Free integration not ready', 'error');
+                return;
+            }
+            
+            try {
+                await window.gpt4FreeIntegration.sendMessageToModel(
+                    'gpt-4',
+                    'Say "Hello, ChatGPT is working!" in exactly those words.',
+                    (chunk, fullText) => {
+                        log(`Streaming: ${fullText}`, 'info');
+                    },
+                    (result) => {
+                        if (result && result.text) {
+                            log(`ChatGPT Response: ${result.text}`, 'success');
+                        } else {
+                            log('ChatGPT response empty', 'error');
+                        }
+                    },
+                    (error) => {
+                        log(`ChatGPT Error: ${error.message}`, 'error');
+                    },
+                    true // Enable streaming
+                );
+            } catch (error) {
+                log(`Exception: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testTitleGeneration() {
+            log('Testing title generation with multiple models...', 'info');
+            
+            if (!window.gpt4FreeIntegration) {
+                log('GPT4Free integration not ready', 'error');
+                return;
+            }
+            
+            const prompt = 'Generate a short title (max 5 words) for a conversation about fixing JavaScript bugs. Title:';
+            const modelsToTest = ['gemini-pro', 'gpt-4', 'claude-3-haiku'];
+            
+            for (const modelId of modelsToTest) {
+                log(`Testing ${modelId}...`, 'info');
+                
+                try {
+                    await new Promise((resolve) => {
+                        let timeoutId = setTimeout(() => {
+                            log(`${modelId} timed out`, 'error');
+                            resolve();
+                        }, 5000);
+                        
+                        window.gpt4FreeIntegration.sendMessageToModel(
+                            modelId,
+                            prompt,
+                            (chunk, fullText) => {
+                                // Streaming update
+                            },
+                            (result) => {
+                                clearTimeout(timeoutId);
+                                if (result && result.text) {
+                                    log(`${modelId} Title: ${result.text}`, 'success');
+                                } else {
+                                    log(`${modelId} returned empty response`, 'error');
+                                }
+                                resolve();
+                            },
+                            (error) => {
+                                clearTimeout(timeoutId);
+                                log(`${modelId} Error: ${error.message}`, 'error');
+                                resolve();
+                            },
+                            false // No streaming for title generation
+                        );
+                    });
+                } catch (error) {
+                    log(`${modelId} Exception: ${error.message}`, 'error');
+                }
+            }
+            
+            log('Title generation test complete', 'info');
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            log('Page loaded, waiting for GPT4Free...', 'info');
+            setTimeout(testGPT4Free, 1000);
+        });
+    </script>
+</body>
+</html>
