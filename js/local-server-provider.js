@@ -1,8 +1,10 @@
-// Local Server Provider for AI Models
+// Local Server Provider for AI Models - now uses Netlify Functions for CORS resolution
 class LocalServerProvider {
   constructor() {
     this.baseUrl = 'http://13.61.23.21:8080/v1';
     this.pollinationsUrl = 'https://text.pollinations.ai/openai';
+    this.netlifyProxyUrl = '/api/proxy';
+    this.netlifyStreamUrl = '/api/stream';
     this.authTokens = []; // Array of available tokens
     this.currentTokenIndex = 0;
     this.validTokens = []; // Working tokens after validation
@@ -55,8 +57,10 @@ class LocalServerProvider {
           // Check if tokens are less than 24 hours old
           if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
             this.validTokens = parsed.tokens;
-            this.authToken = this.validTokens[0];
-            console.log(`[LocalServer] Loaded ${this.validTokens.length} valid tokens from cache`);
+            // Restore the current token index if available
+            this.currentTokenIndex = parsed.currentIndex || 0;
+            this.authToken = this.validTokens[this.currentTokenIndex];
+            console.log(`[LocalServer] Loaded ${this.validTokens.length} valid tokens from cache (using token ${this.currentTokenIndex + 1})`);
             return;
           }
         }
@@ -97,17 +101,23 @@ class LocalServerProvider {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
         
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        const response = await fetch(this.netlifyProxyUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'gpt-5-2025-08-07',
-            messages: [{ role: 'user', content: 'test' }],
-            max_tokens: 1,
-            stream: false
+            path: `${this.baseUrl}/chat/completions`,
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: {
+              model: 'gpt-5-2025-08-07',
+              messages: [{ role: 'user', content: 'test' }],
+              max_tokens: 1,
+              stream: false
+            }
           }),
           signal: controller.signal
         });
@@ -153,7 +163,15 @@ class LocalServerProvider {
     
     this.currentTokenIndex = (this.currentTokenIndex + 1) % this.validTokens.length;
     this.authToken = this.validTokens[this.currentTokenIndex];
-    console.log(`[LocalServer] Rotated to token ${this.currentTokenIndex + 1}/${this.validTokens.length}`);
+    console.log(`[LocalServer] Rotated to token ${this.currentTokenIndex + 1}/${this.validTokens.length} (${this.authToken.substring(0, 20)}...)`);
+    
+    // Update localStorage with new current token
+    localStorage.setItem('validApiTokens', JSON.stringify({
+      tokens: this.validTokens,
+      timestamp: Date.now(),
+      currentIndex: this.currentTokenIndex
+    }));
+    
     return true;
   }
 
@@ -173,6 +191,11 @@ class LocalServerProvider {
       return;
     }
 
+    // Use the messages passed directly from ModelManager (which contains the full conversation history)
+    let conversationMessages = messages;
+    
+    console.log(`[LocalServer] Using ${conversationMessages.length} messages for ${modelKey}:`, conversationMessages);
+
     // If primary config fails and alternatives exist, try them
     const configsToTry = [config];
     if (config.alternativeConfigs) {
@@ -191,7 +214,7 @@ class LocalServerProvider {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         let response;
-        const lastMessage = messages[messages.length - 1];
+        const lastMessage = conversationMessages[conversationMessages.length - 1];
         const userMessage = lastMessage.role === 'user' ? lastMessage.content : '';
 
         console.log(`[LocalServer] Attempt ${attempt}/${maxRetries} - Sending to ${modelKey} with provider: ${currentConfig.provider}`);
@@ -218,34 +241,13 @@ class LocalServerProvider {
           }
         };
 
-        // Choose endpoint based on model
+        // Choose endpoint based on model - now using Netlify Functions
         if (currentConfig.usePollinations) {
-          // Use Pollinations for Gemini
-          response = await this.sendToPollinationsAPI(currentConfig, messages, enableStreaming);
+          // Use Pollinations for Gemini via Netlify proxy
+          response = await this.sendToPollinationsViaNetlify(currentConfig, conversationMessages, enableStreaming);
         } else {
-          const headers = {
-            'Content-Type': 'application/json'
-          };
-
-          if (currentConfig.requiresAuth) {
-            headers['Authorization'] = `Bearer ${this.authToken}`;
-          }
-
-          const body = {
-            model: currentConfig.modelId,
-            messages: messages,
-            stream: enableStreaming
-          };
-
-          if (currentConfig.provider) {
-            body.provider = currentConfig.provider;
-          }
-
-          response = await fetchWithTimeout(`${this.baseUrl}/chat/completions`, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body)
-          });
+          // Use local server via Netlify proxy
+          response = await this.sendToLocalServerViaNetlify(currentConfig, conversationMessages, enableStreaming);
         }
 
         // Check if response is ok
@@ -288,11 +290,48 @@ class LocalServerProvider {
         }
 
         // If we got here, request was successful
+        console.log(`[LocalServer] Response received for ${modelKey}:`, {
+          status: response.status,
+          contentType: response.headers.get('content-type'),
+          streaming: enableStreaming,
+          ok: response.ok,
+          hasBody: !!response.body
+        });
+        
         if (enableStreaming && response.body) {
-          await this.processStreamingResponse(response, modelKey, onChunk, onComplete, onError);
+          // Create a wrapper for onError to handle auth errors from streaming
+          const wrappedOnError = (error) => {
+            if (error.needsTokenRotation && currentConfig.requiresAuth) {
+              console.log(`[LocalServer] Auth error from streaming for ${modelKey}, attempting token rotation...`);
+              
+              if (this.rotateToken()) {
+                // Token rotated successfully, retry immediately
+                console.log(`[LocalServer] Retrying with new token after streaming auth error...`);
+                // Break out of streaming processing and retry the entire request
+                throw new Error('AUTH_RETRY_NEEDED');
+              } else {
+                console.error(`[LocalServer] No more tokens available for rotation`);
+                onError(error);
+              }
+            } else {
+              onError(error);
+            }
+          };
+          
+          try {
+            await this.processStreamingResponse(response, modelKey, onChunk, onComplete, wrappedOnError);
+          } catch (retryError) {
+            if (retryError.message === 'AUTH_RETRY_NEEDED') {
+              // Continue to retry with new token
+              continue;
+            } else {
+              throw retryError;
+            }
+          }
         } else {
           const data = await response.json();
           const text = this.extractTextFromResponse(data);
+          
           onComplete({ text, model: modelKey });
         }
         
@@ -333,11 +372,9 @@ class LocalServerProvider {
     onError(lastError || new Error(`Failed after trying all configurations`));
   }
 
-  // This method is now integrated into sendMessage for retry logic
-  async sendToLocalServer(config, messages, stream = true) {
-    const headers = {
-      'Content-Type': 'application/json'
-    };
+  // Send to local server via Netlify Functions proxy
+  async sendToLocalServerViaNetlify(config, messages, stream = true) {
+    const headers = {};
 
     if (config.requiresAuth) {
       headers['Authorization'] = `Bearer ${this.authToken}`;
@@ -353,37 +390,76 @@ class LocalServerProvider {
       body.provider = config.provider;
     }
 
-    return fetch(`${this.baseUrl}/chat/completions`, {
+    const proxyUrl = stream ? this.netlifyStreamUrl : this.netlifyProxyUrl;
+
+    return fetch(proxyUrl, {
       method: 'POST',
-      headers: headers,
-      body: JSON.stringify(body)
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        path: `${this.baseUrl}/chat/completions`,
+        method: 'POST',
+        headers: headers,
+        body: body
+      })
     });
   }
 
-  async sendToPollinationsAPI(config, messages, stream = true) {
+  // Send to Pollinations via Netlify Functions proxy
+  async sendToPollinationsViaNetlify(config, messages, stream = true) {
     const body = {
       model: config.modelId,
       messages: messages,
       stream: stream
     };
 
-    return fetch(this.pollinationsUrl, {
+    const proxyUrl = stream ? this.netlifyStreamUrl : this.netlifyProxyUrl;
+
+    return fetch(proxyUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        path: this.pollinationsUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: body
+      })
     });
   }
 
-  async processStreamingResponse(response, modelKey, onChunk, onComplete, onError) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullResponse = '';
-    let buffer = '';
-    let hasReceivedData = false;
+  // Legacy methods for backwards compatibility
+  async sendToLocalServer(config, messages, stream = true) {
+    return this.sendToLocalServerViaNetlify(config, messages, stream);
+  }
 
+  async sendToPollinationsAPI(config, messages, stream = true) {
+    return this.sendToPollinationsViaNetlify(config, messages, stream);
+  }
+
+  async processStreamingResponse(response, modelKey, onChunk, onComplete, onError) {
     try {
+      // Check if response is actually streaming or if it's a complete response
+      const contentType = response.headers.get('content-type') || '';
+      
+      console.log(`[LocalServer] Processing response for ${modelKey}, content-type: ${contentType}`);
+      
+      if (!contentType.includes('text/event-stream')) {
+        // Handle non-streaming response (from Netlify Functions)
+        await this.processNonStreamingResponse(response, modelKey, onChunk, onComplete, onError);
+        return;
+      }
+
+      // Handle real streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+      let buffer = '';
+      let hasReceivedData = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -403,11 +479,49 @@ class LocalServerProvider {
             try {
               const data = JSON.parse(line.slice(6));
               
-              // Check for error in response
+              // Debug logging for troubleshooting
               if (data.error) {
-                console.error(`[LocalServer] Error in stream for ${modelKey}:`, data.error);
-                onError(new Error(data.error.message || 'Stream error'));
+                console.error(`[LocalServer] Error in stream for ${modelKey}:`, {
+                  error: data.error,
+                  fullData: data,
+                  line: line
+                });
+                
+                // Check if this is an auth error that needs token rotation
+                const errorMessage = data.error.message || data.error.type || '';
+                const isAuthError = errorMessage.includes('usage-limited') || 
+                                  errorMessage.includes('401') || 
+                                  errorMessage.includes('403') ||
+                                  errorMessage.includes('unauthorized') ||
+                                  errorMessage.includes('forbidden') ||
+                                  errorMessage.includes('invalid token') ||
+                                  errorMessage.includes('token expired') ||
+                                  errorMessage.includes('quota exceeded') ||
+                                  errorMessage.includes('rate limit') ||
+                                  errorMessage.includes('subscription') ||
+                                  errorMessage.includes('billing') ||
+                                  errorMessage.toLowerCase().includes('success') && errorMessage.toLowerCase().includes('false');
+                
+                if (isAuthError) {
+                  console.log(`[LocalServer] Auth error detected in stream for ${modelKey}, triggering token rotation...`);
+                  // Create a special error that will trigger retry with token rotation
+                  const authError = new Error(`AUTH_ERROR: ${errorMessage}`);
+                  authError.needsTokenRotation = true;
+                  authError.originalError = data.error;
+                  onError(authError);
+                  return;
+                }
+                
+                onError(new Error(data.error.message || data.error.type || 'Stream error'));
                 return;
+              }
+              
+              // Debug logging for successful chunks
+              if (data.choices && data.choices[0]) {
+                console.log(`[LocalServer] Stream chunk for ${modelKey}:`, {
+                  delta: data.choices[0].delta,
+                  finish_reason: data.choices[0].finish_reason
+                });
               }
               
               // Check if response indicates completion with empty content
@@ -433,7 +547,17 @@ class LocalServerProvider {
                 onChunk(chunk, fullResponse);
               }
             } catch (e) {
-              console.warn('[LocalServer] Error parsing chunk:', e, 'Line:', line);
+              console.warn(`[LocalServer] Error parsing chunk for ${modelKey}:`, {
+                error: e.message,
+                line: line,
+                lineLength: line.length,
+                startsWithData: line.startsWith('data: ')
+              });
+              
+              // If it's not a JSON parsing error, it might be a different issue
+              if (!e.message.includes('JSON')) {
+                console.error(`[LocalServer] Non-JSON error for ${modelKey}:`, e);
+              }
             }
           }
         }
@@ -462,26 +586,170 @@ class LocalServerProvider {
     }
   }
 
+  async processNonStreamingResponse(response, modelKey, onChunk, onComplete, onError) {
+    try {
+      const responseText = await response.text();
+      
+      if (!responseText) {
+        onError(new Error('Empty response received'));
+        return;
+      }
+
+      console.log(`[LocalServer] Processing non-streaming response for ${modelKey}, length: ${responseText.length}`);
+
+      // Check if this is an event stream format that was collected by Netlify
+      if (responseText.includes('data: ')) {
+        console.log(`[LocalServer] Detected event stream format, simulating streaming from collected chunks`);
+        await this.simulateStreamingFromEventStream(responseText, modelKey, onChunk, onComplete, onError);
+      } else {
+        // Try to parse as JSON response
+        try {
+          const data = JSON.parse(responseText);
+          const fullResponse = this.extractTextFromResponse(data);
+          
+          if (fullResponse && fullResponse !== 'No response received') {
+            console.log(`[LocalServer] Parsed JSON response, simulating streaming from text`);
+            // Simulate streaming by breaking the response into chunks
+            await this.simulateStreamingFromText(fullResponse, modelKey, onChunk, onComplete);
+          } else {
+            onError(new Error('No valid response received'));
+          }
+        } catch (e) {
+          // If not JSON, treat as plain text
+          if (responseText.trim()) {
+            console.log(`[LocalServer] Treating as plain text, simulating streaming`);
+            await this.simulateStreamingFromText(responseText, modelKey, onChunk, onComplete);
+          } else {
+            onError(new Error('Invalid response format'));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[LocalServer] Non-streaming response error:', error);
+      onError(error);
+    }
+  }
+
+  async simulateStreamingFromEventStream(responseText, modelKey, onChunk, onComplete, onError) {
+    const lines = responseText.split('\n');
+    let fullResponse = '';
+    
+    console.log(`[LocalServer] Simulating streaming from event stream for ${modelKey}, lines: ${lines.length}`);
+    
+    for (const line of lines) {
+      if (line.trim() === '') continue;
+      if (line.trim() === 'data: [DONE]') break;
+      
+      if (line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          
+          // Check for errors in the stream
+          if (data.error) {
+            console.error(`[LocalServer] Error in collected event stream for ${modelKey}:`, data.error);
+            
+            // Check if this is an auth error that needs token rotation
+            const errorMessage = data.error.message || data.error.type || '';
+            const isAuthError = errorMessage.includes('usage-limited') || 
+                              errorMessage.includes('401') || 
+                              errorMessage.includes('403') ||
+                              errorMessage.includes('unauthorized') ||
+                              errorMessage.includes('forbidden') ||
+                              errorMessage.includes('invalid token') ||
+                              errorMessage.includes('token expired') ||
+                              errorMessage.includes('quota exceeded') ||
+                              errorMessage.includes('rate limit') ||
+                              errorMessage.includes('subscription') ||
+                              errorMessage.includes('billing') ||
+                              errorMessage.toLowerCase().includes('success') && errorMessage.toLowerCase().includes('false');
+            
+            if (isAuthError) {
+              console.log(`[LocalServer] Auth error detected in collected event stream for ${modelKey}, triggering token rotation...`);
+              // Create a special error that will trigger retry with token rotation
+              const authError = new Error(`AUTH_ERROR: ${errorMessage}`);
+              authError.needsTokenRotation = true;
+              authError.originalError = data.error;
+              onError(authError);
+              return;
+            }
+            
+            onError(new Error(data.error.message || data.error.type || 'Stream error'));
+            return;
+          }
+          
+          const chunk = this.extractChunkText(data);
+          
+          if (chunk) {
+            fullResponse += chunk;
+            onChunk(chunk, fullResponse);
+            // Add small delay to simulate streaming (faster for better UX)
+            await new Promise(resolve => setTimeout(resolve, 5));
+          }
+        } catch (e) {
+          console.warn('[LocalServer] Error parsing event stream line:', e);
+        }
+      }
+    }
+    
+    if (fullResponse) {
+      onComplete({ text: fullResponse, model: modelKey });
+    } else {
+      onError(new Error('No valid content in event stream'));
+    }
+  }
+
+  async simulateStreamingFromText(fullText, modelKey, onChunk, onComplete) {
+    console.log(`[LocalServer] Simulating streaming from text for ${modelKey}, length: ${fullText.length}`);
+    
+    // Break text into smaller chunks for more realistic streaming
+    const chunkSize = 3; // Characters per chunk for smoother streaming
+    let currentText = '';
+    
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+      const chunk = fullText.slice(i, i + chunkSize);
+      currentText += chunk;
+      onChunk(chunk, currentText);
+      
+      // Add small delay between chunks for streaming effect
+      await new Promise(resolve => setTimeout(resolve, 15));
+    }
+    
+    onComplete({ text: fullText, model: modelKey });
+  }
+
   extractChunkText(data) {
     // Handle different response formats
     if (data.choices && data.choices[0]) {
       const choice = data.choices[0];
       if (choice.delta && choice.delta.content) {
+        console.log(`[LocalServer] Extracted chunk content: "${choice.delta.content}"`);
         return choice.delta.content;
       }
       if (choice.delta && choice.delta.reasoning) {
         // Handle Claude thinking model - don't show reasoning to user
+        console.log(`[LocalServer] Claude reasoning chunk (hidden): "${choice.delta.reasoning}"`);
         return '';
       }
       // Handle non-streaming response in streaming format
       if (choice.message && choice.message.content) {
+        console.log(`[LocalServer] Extracted message content: "${choice.message.content}"`);
         return choice.message.content;
       }
+      // Debug: log what we got if no content found
+      console.log(`[LocalServer] No content found in choice:`, {
+        delta: choice.delta,
+        message: choice.message,
+        finish_reason: choice.finish_reason
+      });
     }
     // Handle direct content field
     if (data.content) {
+      console.log(`[LocalServer] Extracted direct content: "${data.content}"`);
       return data.content;
     }
+    
+    // Debug: log what we got if no content found at all
+    console.log(`[LocalServer] No content found in data:`, data);
     return '';
   }
 

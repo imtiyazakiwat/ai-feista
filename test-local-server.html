@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Local Server Provider</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #0a0a0a;
+            color: #fff;
+        }
+        h1 {
+            color: #4a9eff;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #10b981;
+            color: white;
+        }
+        .error {
+            background: #ef4444;
+            color: white;
+        }
+        .warning {
+            background: #f59e0b;
+            color: white;
+        }
+        .info {
+            background: #3b82f6;
+            color: white;
+        }
+        pre {
+            background: #000;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            background: #000;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Local Server Provider Test</h1>
+    
+    <div class="test-section">
+        <h2>Provider Status</h2>
+        <div id="provider-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Model Manager Status</h2>
+        <div id="model-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test Message Sending</h2>
+        <button onclick="testChatGPT()">Test ChatGPT</button>
+        <button onclick="testClaude()">Test Claude</button>
+        <button onclick="testGemini()">Test Gemini</button>
+        <button onclick="testAllModels()">Test All Models</button>
+        <div id="response"></div>
+    </div>
+
+    <!-- Load required scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/local-server-provider.js"></script>
+    <script src="js/models.js"></script>
+    
+    <script>
+        // Check provider status
+        function checkProviderStatus() {
+            const statusDiv = document.getElementById('provider-status');
+            
+            if (window.localServerProvider) {
+                statusDiv.innerHTML = '<div class="status success">✅ Local Server Provider is loaded</div>';
+                
+                // Check if provider can be initialized
+                if (typeof window.localServerProvider.sendMessageToModel === 'function') {
+                    statusDiv.innerHTML += '<div class="status success">✅ Provider has sendMessageToModel method</div>';
+                } else {
+                    statusDiv.innerHTML += '<div class="status error">❌ Provider missing sendMessageToModel method</div>';
+                }
+                
+                if (typeof window.localServerProvider.sendMessageToAllModels === 'function') {
+                    statusDiv.innerHTML += '<div class="status success">✅ Provider has sendMessageToAllModels method</div>';
+                } else {
+                    statusDiv.innerHTML += '<div class="status error">❌ Provider missing sendMessageToAllModels method</div>';
+                }
+            } else {
+                statusDiv.innerHTML = '<div class="status error">❌ Local Server Provider not found</div>';
+            }
+        }
+        
+        // Check model manager status
+        function checkModelStatus() {
+            const statusDiv = document.getElementById('model-status');
+            
+            if (window.modelManager) {
+                statusDiv.innerHTML = '<div class="status success">✅ Model Manager is loaded</div>';
+                
+                const models = window.modelManager.getAllModels();
+                if (models && Object.keys(models).length > 0) {
+                    statusDiv.innerHTML += '<div class="status success">✅ Models loaded: ' + Object.keys(models).join(', ') + '</div>';
+                    
+                    // Display model details
+                    statusDiv.innerHTML += '<div class="status info">Model Details:</div>';
+                    statusDiv.innerHTML += '<pre>' + JSON.stringify(models, null, 2) + '</pre>';
+                } else {
+                    statusDiv.innerHTML += '<div class="status warning">⚠️ No models loaded</div>';
+                }
+            } else {
+                statusDiv.innerHTML = '<div class="status error">❌ Model Manager not found</div>';
+            }
+        }
+        
+        // Test sending message to a model
+        async function testModel(modelId) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = `Testing ${modelId}...\n`;
+            
+            if (!window.localServerProvider) {
+                responseDiv.textContent += '❌ Local Server Provider not available\n';
+                return;
+            }
+            
+            try {
+                await window.localServerProvider.sendMessageToModel(
+                    modelId,
+                    'Hello! Please respond with a brief greeting.',
+                    {
+                        onChunk: (chunk, fullText) => {
+                            responseDiv.textContent = `${modelId} (streaming):\n${fullText || chunk}`;
+                        },
+                        onComplete: (text) => {
+                            responseDiv.textContent = `✅ ${modelId} response:\n${text}`;
+                        },
+                        onError: (error) => {
+                            responseDiv.textContent = `❌ ${modelId} error:\n${error?.message || error}`;
+                        },
+                        stream: true
+                    }
+                );
+            } catch (error) {
+                responseDiv.textContent = `❌ ${modelId} exception:\n${error?.message || error}`;
+            }
+        }
+        
+        function testChatGPT() {
+            testModel('chatgpt');
+        }
+        
+        function testClaude() {
+            testModel('claude');
+        }
+        
+        function testGemini() {
+            testModel('gemini');
+        }
+        
+        async function testAllModels() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Testing all models...\n\n';
+            
+            if (!window.localServerProvider) {
+                responseDiv.textContent += '❌ Local Server Provider not available\n';
+                return;
+            }
+            
+            const models = ['chatgpt', 'claude', 'gemini', 'grok', 'deepseek'];
+            const responses = {};
+            
+            try {
+                await window.localServerProvider.sendMessageToAllModels(
+                    'Hello! Please respond with a brief greeting.',
+                    models,
+                    (modelId, chunk, fullText) => {
+                        responses[modelId] = fullText || chunk;
+                        updateAllModelsDisplay(responses);
+                    },
+                    (modelId, result) => {
+                        const text = typeof result === 'string' ? result : (result?.text || '');
+                        responses[modelId] = `✅ ${text}`;
+                        updateAllModelsDisplay(responses);
+                    },
+                    (modelId, error) => {
+                        responses[modelId] = `❌ Error: ${error?.message || error}`;
+                        updateAllModelsDisplay(responses);
+                    }
+                );
+            } catch (error) {
+                responseDiv.textContent = `❌ Exception:\n${error?.message || error}`;
+            }
+        }
+        
+        function updateAllModelsDisplay(responses) {
+            const responseDiv = document.getElementById('response');
+            let text = 'All Models Test Results:\n\n';
+            for (const [model, response] of Object.entries(responses)) {
+                text += `${model}:\n${response}\n\n`;
+            }
+            responseDiv.textContent = text;
+        }
+        
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                checkProviderStatus();
+                checkModelStatus();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

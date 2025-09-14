@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Conversation History Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .conversation-test {
+            margin: 10px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .user-message {
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+        }
+        .assistant-message {
+            background: #f3e5f5;
+            border-left: 3px solid #9c27b0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Conversation History Fix Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Controls</h2>
+        <button onclick="testConversationFlow()">Test Conversation Flow</button>
+        <button onclick="checkModelHistories()">Check Model Histories</button>
+        <button onclick="clearTestData()">Clear Test Data</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="testResults"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Model Conversation Histories</h2>
+        <div id="conversationHistories"></div>
+    </div>
+
+    <!-- Load the required scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/local-server-provider.js"></script>
+    <script src="js/models.js"></script>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('testResults');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearTestData() {
+            localStorage.clear();
+            window.storageManager = new StorageManager();
+            log('Test data cleared', 'success');
+            checkModelHistories();
+        }
+
+        function checkModelHistories() {
+            const currentChat = window.storageManager.getCurrentChat();
+            const historiesDiv = document.getElementById('conversationHistories');
+            historiesDiv.innerHTML = '';
+
+            if (currentChat.modelChats && Object.keys(currentChat.modelChats).length > 0) {
+                Object.keys(currentChat.modelChats).forEach(modelId => {
+                    const modelChat = currentChat.modelChats[modelId];
+                    const div = document.createElement('div');
+                    div.className = 'conversation-test';
+                    
+                    let messagesHtml = '';
+                    if (modelChat.messages && modelChat.messages.length > 0) {
+                        modelChat.messages.forEach(msg => {
+                            const messageClass = msg.role === 'user' ? 'user-message' : 'assistant-message';
+                            messagesHtml += `
+                                <div class="message ${messageClass}">
+                                    <strong>${msg.role}:</strong> ${msg.content}
+                                </div>
+                            `;
+                        });
+                    } else {
+                        messagesHtml = '<p>No messages yet</p>';
+                    }
+                    
+                    div.innerHTML = `
+                        <h4>${modelId.toUpperCase()}</h4>
+                        <p><strong>Total Messages:</strong> ${modelChat.messages.length}</p>
+                        <div class="messages">${messagesHtml}</div>
+                    `;
+                    historiesDiv.appendChild(div);
+                });
+            } else {
+                historiesDiv.innerHTML = '<p>No model conversation histories found</p>';
+            }
+        }
+
+        async function testConversationFlow() {
+            try {
+                log('Starting conversation flow test...', 'info');
+                
+                // Test 1: Add user message to multiple models
+                const userMessage1 = "Hi, my name is Imtiyaz";
+                log(`Step 1: Adding user message: "${userMessage1}"`, 'info');
+                
+                // Simulate what happens when user sends a message
+                const messageId = window.Utils.generateId();
+                
+                // Add to global chat
+                window.storageManager.addMessage({
+                    role: "user",
+                    content: userMessage1,
+                    messageId: messageId
+                });
+                
+                // Add to specific models
+                const models = ['chatgpt', 'claude', 'gemini'];
+                models.forEach(modelId => {
+                    window.storageManager.addMessageToModel(modelId, {
+                        role: "user",
+                        content: userMessage1
+                    });
+                    log(`Added user message to ${modelId}`, 'success');
+                });
+                
+                // Test 2: Simulate assistant responses
+                log('Step 2: Simulating assistant responses...', 'info');
+                const responses = {
+                    'chatgpt': "Hello Imtiyaz! Nice to meet you. How can I help you today?",
+                    'claude': "Hi Imtiyaz! It's great to meet you. What would you like to talk about?",
+                    'gemini': "Hello Imtiyaz! Welcome. How may I assist you today?"
+                };
+                
+                Object.keys(responses).forEach(modelId => {
+                    window.storageManager.addMessageToModel(modelId, {
+                        role: "assistant",
+                        content: responses[modelId]
+                    });
+                    log(`Added assistant response to ${modelId}`, 'success');
+                });
+                
+                // Test 3: Add follow-up message
+                const userMessage2 = "What is my name?";
+                log(`Step 3: Adding follow-up message: "${userMessage2}"`, 'info');
+                
+                models.forEach(modelId => {
+                    window.storageManager.addMessageToModel(modelId, {
+                        role: "user",
+                        content: userMessage2
+                    });
+                    log(`Added follow-up to ${modelId}`, 'success');
+                });
+                
+                // Test 4: Verify each model has the conversation history
+                log('Step 4: Verifying conversation histories...', 'info');
+                models.forEach(modelId => {
+                    const history = window.storageManager.getModelChatHistory(modelId);
+                    const hasName = history.some(msg => msg.content.includes('Imtiyaz'));
+                    log(`${modelId} has ${history.length} messages, knows name: ${hasName}`, hasName ? 'success' : 'error');
+                });
+                
+                checkModelHistories();
+                log('Conversation flow test completed!', 'success');
+                
+            } catch (error) {
+                log(`Error in conversation flow test: ${error.message}`, 'error');
+                console.error('Conversation flow test error:', error);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Conversation history fix test page loaded.', 'info');
+            checkModelHistories();
+        });
+    </script>
+</body>
+</html>

@@ -1,11 +1,10 @@
-// AI Models Integration and API Management using GPT4Free
+// AI Models Integration and API Management using LocalServerProvider with Netlify Functions
 class ModelManager {
   constructor() {
     this.models = {}
     this.activeRequests = new Map()
-    this.storageManager = {} // Declare storageManager
-    this.Utils = {} // Declare Utils
-    this.gpt4FreeLoaded = false
+    this.localServerProvider = null
+    this.providerLoaded = false
   }
 
   getModel(modelId) {
@@ -25,10 +24,12 @@ class ModelManager {
   }
 
   async init() {
-    // Always use the hardcoded models only to avoid dynamic loading issues
-    console.log("Using hardcoded models only");
-    this.loadModelsFromGPT4Free();
-    this.gpt4FreeLoaded = true; // Set to true so sendMessage works
+    // Initialize LocalServerProvider for CORS-free API calls via Netlify Functions
+    console.log("Initializing LocalServerProvider with Netlify Functions for CORS-free API calls");
+    this.localServerProvider = new LocalServerProvider();
+    await this.localServerProvider.initializeTokens();
+    this.loadModelsFromLocalServerProvider();
+    this.providerLoaded = true;
     
     // Ensure modelManager is available globally
     if (window.modelManager) {
@@ -36,22 +37,14 @@ class ModelManager {
     }
   }
 
-  async loadModelsFromGPT4Free() {
+  loadModelsFromLocalServerProvider() {
     try {
-      // Wait for GPT4Free to be ready
-      let attempts = 0;
-      while (!window.gpt4FreeIntegration || !window.gpt4FreeIntegration.getAvailableModels) {
-        if (attempts > 50) { // 5 seconds timeout
-          throw new Error("GPT4Free integration not available");
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
+      console.log("Loading models from LocalServerProvider");
+      
+      const availableModels = this.localServerProvider.getAvailableModels();
+      console.log("Available models from LocalServerProvider:", availableModels);
 
-      const availableModels = window.gpt4FreeIntegration.getAvailableModels();
-      console.log("Available models from GPT4Free:", availableModels);
-
-      // Convert GPT4Free models to our format
+      // Convert LocalServerProvider models to our format
       this.models = {};
 
       // Default colors for models
@@ -63,84 +56,22 @@ class ModelManager {
       // Default icons for models
       const modelIcons = ["🤖", "🧠", "💎", "⚡", "🔍", "🎯", "🚀", "🌟"];
 
-      // Map known model patterns to our standard models
-      const modelMappings = {
-        // ChatGPT models
-        'gpt-4o': 'chatgpt',
-        'gpt-4': 'chatgpt',
-        'gpt-3.5-turbo': 'chatgpt',
-        'gpt-5': 'chatgpt',
-        'gpt-5-2025-08-07': 'chatgpt',
-        
-        // Claude models
-        'claude-3-haiku': 'claude',
-        'claude-3-sonnet': 'claude',
-        'claude-3-opus': 'claude',
-        'claude-3-5-sonnet-latest': 'claude',
-        'claude-opus-4-latest': 'claude',
-        
-        // Gemini models
-        'gemini-pro': 'gemini',
-        'gemini-1.5': 'gemini',
-        'gemini-2.0-flash': 'gemini',
-        
-        // Grok models
-        'grok': 'grok',
-        'grok-2': 'grok',
-        'grok-3-fast': 'grok',
-        
-        // DeepSeek models
-        'deepseek': 'deepseek',
-        'deepseek-chat': 'deepseek',
-        'deepseek-v3': 'deepseek',
-        'deepseek-ai/DeepSeek-R1': 'deepseek',
-        'deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free': 'deepseek',
-        'openrouter:deepseek/deepseek-chat-v3-0324:free': 'deepseek'
-      };
-
       availableModels.forEach((model, index) => {
-        const modelId = typeof model === 'string' ? model : (model.id || model.model);
-        const modelName = typeof model === 'string' ? model : (model.name || model.id || model.model);
+        const modelId = model.id;
+        const modelName = model.name;
 
-        // Try to map to our standard model names
-        let mappedId = null;
-        for (const [pattern, standardId] of Object.entries(modelMappings)) {
-          if (modelId.toLowerCase().includes(pattern.toLowerCase())) {
-            mappedId = standardId;
-            break;
-          }
-        }
-
-        // If we found a mapping, use it; otherwise create a generic ID
-        const niceId = mappedId || modelName.toLowerCase()
-          .replace(/[^a-z0-9]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-
-        // Only add if we don't already have this model
-        if (!this.models[niceId]) {
-          this.models[niceId] = {
-            name: modelName,
-            modelId: modelId,
-            color: modelColors[Object.keys(this.models).length % modelColors.length],
-            icon: modelIcons[Object.keys(this.models).length % modelIcons.length],
-            provider: "gpt4free"
-          };
-        }
+        this.models[modelId] = {
+          name: modelName,
+          modelId: model.modelId,
+          color: modelColors[index % modelColors.length],
+          icon: modelIcons[index % modelIcons.length],
+          provider: "localserver"
+        };
       });
 
-      // Ensure we have our core models, even if they're not in the available list
-      const coreModels = ['chatgpt', 'claude', 'gemini', 'grok', 'deepseek'];
-      coreModels.forEach(coreModel => {
-        if (!this.models[coreModel]) {
-          console.log(`Adding fallback for core model: ${coreModel}`);
-          this.models[coreModel] = this.getFallbackModel(coreModel);
-        }
-      });
-
-      console.log("Loaded models:", this.models);
+      console.log("Loaded models from LocalServerProvider:", this.models);
     } catch (error) {
-      console.error("Error loading models from GPT4Free:", error);
+      console.error("Error loading models from LocalServerProvider:", error);
       this.loadFallbackModels();
     }
   }
@@ -152,35 +83,35 @@ class ModelManager {
         modelId: "gpt-4",
         color: "#00A67E",
         icon: "🤖",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "claude": {
         name: "Claude",
         modelId: "claude-3-haiku",
         color: "#D97706",
         icon: "🧠",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "gemini": {
         name: "Gemini",
         modelId: "gemini-pro",
         color: "#4285F4",
         icon: "💎",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "grok": {
         name: "Grok",
         modelId: "grok-2",
         color: "#1DA1F2",
         icon: "⚡",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "deepseek": {
         name: "DeepSeek",
         modelId: "deepseek-chat",
         color: "#8B5CF6",
         icon: "🔍",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       // Pollinations fallback models
       "deepseek-reasoning": {
@@ -252,42 +183,42 @@ class ModelManager {
         modelId: "gpt-4", // Use basic GPT-4 which should be more reliable
         color: "#00A67E",
         icon: "🤖",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "claude": {
         name: "Claude",
         modelId: "claude-3-haiku", // This seems to work
         color: "#D97706",
         icon: "🧠",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "gemini": {
         name: "Gemini",
         modelId: "gemini-pro", // Use basic gemini-pro
         color: "#4285F4",
         icon: "💎",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "grok": {
         name: "Grok",
         modelId: "grok-2", // Use basic grok model
         color: "#1DA1F2",
         icon: "⚡",
-        provider: "gpt4free"
+        provider: "localserver"
       },
       "deepseek": {
         name: "DeepSeek",
         modelId: "deepseek-chat", // This seems to work
         color: "#8B5CF6",
         icon: "🔍",
-        provider: "gpt4free"
+        provider: "localserver"
       }
     };
   }
 
   async sendMessage(modelId, messages, onChunk, onComplete, onError) {
-    if (!this.gpt4FreeLoaded) {
-      onError(new Error("Models not loaded yet"));
+    if (!this.providerLoaded || !this.localServerProvider) {
+      onError(new Error("LocalServerProvider not loaded yet"));
       return;
     }
 
@@ -297,44 +228,35 @@ class ModelManager {
       return;
     }
 
-    const requestId = this.Utils.generateId();
+    const requestId = window.Utils.generateId();
     const startTime = Date.now();
 
     try {
-      // Use GPT4Free integration to send message
-      if (window.gpt4FreeIntegration) {
-        // Get the last user message
-        const lastUserMessage = messages[messages.length - 1];
-        const userMessageContent = lastUserMessage.role === 'user' ? lastUserMessage.content : '';
-        
-        // Send to GPT4Free
-        await window.gpt4FreeIntegration.sendMessageToModel(
-          model.modelId,
-          userMessageContent,
-          // onChunk
-          (chunk, fullText) => {
-            onChunk(chunk, fullText);
-          },
-          // onComplete
-          (result) => {
-            const endTime = Date.now();
-            const responseTime = endTime - startTime;
-            
-            onComplete({
-              text: result.text,
-              responseTime,
-              wordCount: result.text.split(/\s+/).length,
-              model: modelId,
-            });
-          },
-          // onError
-          (error) => {
-            onError(error);
-          }
-        );
-      } else {
-        throw new Error("GPT4Free integration not available");
-      }
+      // Pass the entire conversation history to LocalServerProvider
+      await this.localServerProvider.sendMessage(
+        modelId,
+        messages, // Pass the full conversation history
+        // onChunk
+        (chunk, fullText) => {
+          onChunk(chunk, fullText);
+        },
+        // onComplete
+        (result) => {
+          const endTime = Date.now();
+          const responseTime = endTime - startTime;
+          
+          onComplete({
+            text: result.text,
+            responseTime,
+            wordCount: result.text.split(/\s+/).length,
+            model: modelId,
+          });
+        },
+        // onError
+        (error) => {
+          onError(error);
+        }
+      );
     } catch (error) {
       console.error(`Error with ${modelId}:`, error);
       onError(error);

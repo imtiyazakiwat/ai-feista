@@ -74,10 +74,7 @@ class AIFiestaApp {
     // Initialize storage
     window.storageManager.init()
 
-    // Wait for GPT4Free integration to be ready
-    await this.waitForGPT4Free()
-
-    // Initialize model manager (which depends on GPT4Free)
+    // Initialize model manager (which depends on LocalServerProvider with Netlify Functions)
     if (window.modelManager) {
       await window.modelManager.init()
       console.log("Model manager initialized successfully")
@@ -101,23 +98,7 @@ class AIFiestaApp {
     this.setupPerformanceMonitoring()
   }
 
-  async waitForGPT4Free() {
-    console.log("Waiting for GPT4Free integration...")
-    let attempts = 0
-    const maxAttempts = 100 // 10 seconds
-
-    while (!window.gpt4FreeIntegration && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      attempts++
-    }
-
-    if (!window.gpt4FreeIntegration) {
-      console.warn("GPT4Free integration not available after timeout")
-      window.Utils.showToast("GPT4Free integration failed to load, using fallback mode", "warning")
-    } else {
-      console.log("GPT4Free integration is ready")
-    }
-  }
+  // GPT4Free integration removed - using LocalServerProvider with Netlify Functions instead
 
   setupGlobalEventListeners() {
     // Handle app-wide events
@@ -433,8 +414,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.Utils = Utils;
   window.themeManager = new ThemeManager();
   window.storageManager = new StorageManager();
-  // Remove duplicate GPT4Free initialization - it's already created in gpt4free-integration.js
-  // window.gpt4FreeIntegration = new GPT4FreeIntegration(); // <-- This line removed
+  // LocalServerProvider is initialized in models.js
   window.modelManager = new ModelManager();
   window.componentManager = new ComponentManager();
   window.comparisonManager = new ComparisonManager();

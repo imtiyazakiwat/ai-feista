@@ -1352,9 +1352,7 @@
     <link rel="stylesheet" href="css/mobile-fixes.css">
     <script src="js/utils.js"></script>
     <script src="js/storage.js"></script>
-    <script src="js/pollinations-provider.js"></script>
     <script src="js/local-server-provider.js"></script>
-    <script src="js/gpt4free-integration.js"></script>
     <script src="js/models.js"></script>
 </head>
 <body>
@@ -1584,20 +1582,9 @@
             }
             // Initialize provider system
             window.addEventListener('DOMContentLoaded', function() {
-                // Wait for integration to be ready
-                let attempts = 0;
-                const initProvider = setInterval(() => {
-                    if (window.gpt4FreeIntegration || attempts > 50) {
-                        clearInterval(initProvider);
-                        // Always default to Local Server (AI Server)
-                        if (window.gpt4FreeIntegration) {
-                            window.gpt4FreeIntegration.setActiveProvider('server');
-                            localStorage.setItem('aiFiestaProvider', 'server');
-                        }
-                        updateModelConfigs();
-                    }
-                    attempts++;
-                }, 100);
+                // Always use Local Server (AI Server) - no need to wait for gpt4FreeIntegration
+                localStorage.setItem('aiFiestaProvider', 'server');
+                updateModelConfigs();
             });
         </script>
 
@@ -1814,41 +1801,17 @@
             deepseek: { name: 'DeepSeek', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'deepseek-v3-0324' }
         };
         
-        // Update model configurations based on provider
+        // Update model configurations for LocalServerProvider
         function updateModelConfigs() {
-            const provider = window.gpt4FreeIntegration?.getActiveProvider?.();
-            
-            if (provider === 'server') {
-                // Using Local Server - use the specified model IDs
-                console.log('Updating model configs for Local Server');
-                modelConfigs = {
-                    chatgpt: { name: 'ChatGPT (GPT-5)', icon: 'img/chatgpt.png', color: '#00a67e', modelId: 'chatgpt' },
-                    claude: { name: 'Claude 3.7', icon: 'img/claude.png', color: '#d97706', modelId: 'claude' },
-                    gemini: { name: 'Gemini', icon: 'img/gemini.jpeg', color: '#4285f4', modelId: 'gemini' },
-                    grok: { name: 'Grok 4', icon: 'img/grok.png', color: '#1da1f2', modelId: 'grok' },
-                    deepseek: { name: 'DeepSeek V3', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'deepseek' }
-                };
-            } else if (window.gpt4FreeIntegration && window.gpt4FreeIntegration.usingPollinations) {
-                // Using Pollinations - use their model names
-                console.log('Updating model configs for Pollinations.AI');
-                modelConfigs = {
-                    chatgpt: { name: 'ChatGPT', icon: 'img/chatgpt.png', color: '#00a67e', modelId: 'openai' },
-                    claude: { name: 'Claude (Unavailable)', icon: 'img/claude.png', color: '#d97706', modelId: null },
-                    gemini: { name: 'Gemini', icon: 'img/gemini.jpeg', color: '#4285f4', modelId: 'gemini' },
-                    grok: { name: 'Grok (Mistral)', icon: 'img/grok.png', color: '#1da1f2', modelId: 'mistral' },
-                    deepseek: { name: 'DeepSeek', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'qwen-coder' }
-                };
-            } else {
-                // Default GPT4Free models
-                console.log('Using default GPT4Free model configs');
-                modelConfigs = {
-                    chatgpt: { name: 'ChatGPT', icon: 'img/chatgpt.png', color: '#00a67e', modelId: 'gpt-4o' },
-                    claude: { name: 'Claude', icon: 'img/claude.png', color: '#d97706', modelId: 'claude-3-5-sonnet-latest' },
-                    gemini: { name: 'Gemini', icon: 'img/gemini.jpeg', color: '#4285f4', modelId: 'gemini' },
-                    grok: { name: 'Grok', icon: 'img/grok.png', color: '#1da1f2', modelId: 'grok-2' },
-                    deepseek: { name: 'DeepSeek', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'deepseek-v3-0324' }
-                };
-            }
+            // Using LocalServerProvider with Netlify Functions - use the specified model IDs
+            console.log('Updating model configs for LocalServerProvider');
+            modelConfigs = {
+                chatgpt: { name: 'ChatGPT (GPT-5)', icon: 'img/chatgpt.png', color: '#00a67e', modelId: 'chatgpt' },
+                claude: { name: 'Claude 3.7 Sonnet', icon: 'img/claude.png', color: '#d97706', modelId: 'claude' },
+                gemini: { name: 'Gemini 2.5 Flash', icon: 'img/gemini.jpeg', color: '#4285f4', modelId: 'gemini' },
+                grok: { name: 'Grok 3 Fast', icon: 'img/grok.png', color: '#1da1f2', modelId: 'grok' },
+                deepseek: { name: 'DeepSeek V3', icon: 'img/deepseek.jpeg', color: '#8b5cf6', modelId: 'deepseek' }
+            };
         }
         
         // Theme management
@@ -1924,6 +1887,9 @@
         let currentChatId = null;
         let currentChat = null;
         
+        // Model-specific conversation histories
+        let modelConversations = {};
+        
         // Initialize chat management
         function initializeChatManagement() {
             // Load existing chats into sidebar
@@ -1946,6 +1912,9 @@
                 updatedAt: new Date().toISOString(),
                 aiGeneratedTitle: false
             };
+            
+            // Initialize model-specific conversations for this chat
+            modelConversations[currentChatId] = {};
             
             // Clear the current display
             document.getElementById('contentGrid').innerHTML = '';
@@ -2054,6 +2023,11 @@
             currentChatId = chatId;
             currentChat = chats[chatId];
             
+            // Initialize model-specific conversations for this chat if not exists
+            if (!modelConversations[chatId]) {
+                modelConversations[chatId] = {};
+            }
+            
             // Clear and rebuild UI with saved messages
             document.getElementById('contentGrid').innerHTML = '';
             
@@ -2071,7 +2045,16 @@
                 createModelCard(modelId);
                 const chatHistory = document.getElementById(`chat-${modelId}`);
                 
+                // Rebuild model-specific conversation history
+                modelConversations[chatId][modelId] = [];
+                
                 messagesByModel[modelId].forEach(msg => {
+                    // Add to model-specific conversation history
+                    modelConversations[chatId][modelId].push({
+                        role: msg.role,
+                        content: msg.content
+                    });
+                    
                     let messageHTML = '';
                     if (msg.role === 'user') {
                         messageHTML = `
@@ -2481,118 +2464,135 @@
             // Ensure toggle listeners are attached
             setTimeout(() => attachToggleListeners(), 100);
 
-            // Send message to GPT4Free
-            if (window.gpt4FreeIntegration) {
-                const modelIds = selectedModels
-                    .filter(modelId => modelConfigs[modelId].modelId !== null) // Filter out disabled models
-                    .map(modelId => {
-                        // Use exact model IDs from config
-                        return modelConfigs[modelId].modelId;
-                    });
-
-                // Create reverse mapping
-                const reverseMapping = {};
-                Object.keys(modelConfigs).forEach(key => {
-                    reverseMapping[modelConfigs[key].modelId] = key;
-                });
-
-                await window.gpt4FreeIntegration.sendMessageToAllModels(
-                    message,
-                    modelIds,
-                    (modelId, chunk, fullText) => {
-                        console.log(`[DEBUG] Streaming chunk for ${modelId}:`, {
-                            modelId,
-                            chunkLength: chunk ? chunk.length : 0,
-                            fullTextLength: fullText ? fullText.length : 0,
-                            chunkType: typeof chunk,
-                            fullTextType: typeof fullText
+            // Send message to LocalServerProvider via ModelManager
+            if (window.modelManager && window.modelManager.localServerProvider) {
+                // Send to each selected model
+                selectedModels.forEach(async (modelId) => {
+                    try {
+                        // Get model-specific conversation history
+                        if (!modelConversations[currentChatId]) {
+                            modelConversations[currentChatId] = {};
+                        }
+                        if (!modelConversations[currentChatId][modelId]) {
+                            modelConversations[currentChatId][modelId] = [];
+                        }
+                        
+                        // Add user message to model-specific history
+                        modelConversations[currentChatId][modelId].push({
+                            role: 'user',
+                            content: message
                         });
-                        
-                        // Special debug for ChatGPT-5
-                        if (modelId === 'gpt-5-2025-08-07') {
-                            console.log('[DEBUG ChatGPT-5] Chunk content:', chunk);
-                            console.log('[DEBUG ChatGPT-5] Full text length:', fullText.length);
-                            console.log('[DEBUG ChatGPT-5] Full text preview (last 100 chars):', 
-                                       fullText.length > 100 ? '...' + fullText.slice(-100) : fullText);
-                        }
-                        
-                        const uiModelId = reverseMapping[modelId] || modelId;
-                        updateMessageInCard(uiModelId, fullText, true);
-                    },
-                    (modelId, result) => {
-                        console.log(`[DEBUG] Complete response for ${modelId}:`, {
+
+                        // Send the full conversation history for this model
+                        await window.modelManager.sendMessage(
                             modelId,
-                            result,
-                            resultType: typeof result,
-                            hasText: result && result.text !== undefined
-                        });
-                        
-                        // Special debug for ChatGPT-5
-                        if (modelId === 'gpt-5-2025-08-07') {
-                            console.log('[DEBUG ChatGPT-5] Final result object:', result);
-                            console.log('[DEBUG ChatGPT-5] Result.text:', result.text);
-                        }
-                        
-                        const uiModelId = reverseMapping[modelId] || modelId;
-                        updateMessageInCard(uiModelId, result.text, false);
-                        
-                        // Save assistant response to chat
-                        if (currentChat && result.text && !result.text.includes('Error:')) {
-                            currentChat.messages.push({
-                                model: uiModelId,
-                                role: 'assistant',
-                                content: result.text,
-                                timestamp: new Date().toISOString()
-                            });
-                            saveCurrentChatState();
-                        }
-                        
-                        // Mark this model as complete
-                        pendingResponses.delete(uiModelId);
-                        console.log(`[DEBUG] Model ${uiModelId} completed. Remaining: ${pendingResponses.size}`);
-                        
-                        // Reset currentMessageId only when all models are done
-                        if (pendingResponses.size === 0) {
-                            console.log('[DEBUG] All models completed, resetting currentMessageId');
-                            currentMessageId = null;
-                            
-                            // Generate AI title after first complete exchange if title is still temporary
-                            if (currentChat && currentChat.messages.length >= 2) {
-                                const hasGeneratedTitle = currentChat.aiGeneratedTitle;
-                                if (!hasGeneratedTitle) {
-                                    generateChatTitle(currentChat.messages).then(title => {
-                                        if (title && currentChat) {
-                                            currentChat.title = title;
-                                            currentChat.aiGeneratedTitle = true;
-                                            saveCurrentChatState();
-                                            loadChatHistory(); // Refresh sidebar with new title
-                                            highlightActiveChat();
-                                        }
+                            modelConversations[currentChatId][modelId],
+                            // onChunk
+                            (chunk, fullText) => {
+                                console.log(`[DEBUG] Streaming chunk for ${modelId}:`, {
+                                    modelId,
+                                    chunk: chunk,
+                                    chunkLength: chunk ? chunk.length : 0,
+                                    fullText: fullText,
+                                    fullTextLength: fullText ? fullText.length : 0,
+                                    chunkType: typeof chunk,
+                                    fullTextType: typeof fullText,
+                                    chunkIsEmpty: !chunk || chunk === '',
+                                    fullTextIsEmpty: !fullText || fullText === ''
+                                });
+                                
+                                // Only update if we have actual content
+                                if (chunk && chunk !== '') {
+                                    updateMessageInCard(modelId, fullText, true);
+                                }
+                            },
+                            // onComplete
+                            (result) => {
+                                console.log(`[DEBUG] Complete response for ${modelId}:`, {
+                                    modelId,
+                                    result,
+                                    resultType: typeof result,
+                                    hasText: result && result.text !== undefined
+                                });
+                                
+                                updateMessageInCard(modelId, result.text, false);
+                                
+                                // Save assistant response to chat
+                                if (currentChat && result.text && !result.text.includes('Error:')) {
+                                    currentChat.messages.push({
+                                        model: modelId,
+                                        role: 'assistant',
+                                        content: result.text,
+                                        timestamp: new Date().toISOString()
                                     });
+                                    
+                                    // Save assistant response to model-specific history
+                                    if (modelConversations[currentChatId] && modelConversations[currentChatId][modelId]) {
+                                        modelConversations[currentChatId][modelId].push({
+                                            role: 'assistant',
+                                            content: result.text
+                                        });
+                                    }
+                                    
+                                    saveCurrentChatState();
+                                }
+                                
+                                // Mark this model as complete
+                                pendingResponses.delete(modelId);
+                                console.log(`[DEBUG] Model ${modelId} completed. Remaining: ${pendingResponses.size}`);
+                                
+                                // Reset currentMessageId only when all models are done
+                                if (pendingResponses.size === 0) {
+                                    console.log('[DEBUG] All models completed, resetting currentMessageId');
+                                    currentMessageId = null;
+                                    
+                                    // Generate AI title after first complete exchange if title is still temporary
+                                    if (currentChat && currentChat.messages.length >= 2) {
+                                        const hasGeneratedTitle = currentChat.aiGeneratedTitle;
+                                        if (!hasGeneratedTitle) {
+                                            generateChatTitle(currentChat.messages).then(title => {
+                                                if (title && currentChat) {
+                                                    currentChat.title = title;
+                                                    currentChat.aiGeneratedTitle = true;
+                                                    saveCurrentChatState();
+                                                    loadChatHistory(); // Refresh sidebar with new title
+                                                    highlightActiveChat();
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            },
+                            // onError
+                            (error) => {
+                                updateMessageInCard(modelId, `Error: ${error.message}`, false);
+                                
+                                // Mark this model as complete (even if error)
+                                pendingResponses.delete(modelId);
+                                console.log(`[DEBUG] Model ${modelId} errored. Remaining: ${pendingResponses.size}`);
+                                
+                                // Reset currentMessageId only when all models are done
+                                if (pendingResponses.size === 0) {
+                                    console.log('[DEBUG] All models completed, resetting currentMessageId');
+                                    currentMessageId = null;
                                 }
                             }
-                        }
-                    },
-                    (modelId, error) => {
-                        const uiModelId = reverseMapping[modelId] || modelId;
-                        updateMessageInCard(uiModelId, `Error: ${error.message}`, false);
+                        );
+                    } catch (error) {
+                        console.error(`Error sending message to ${modelId}:`, error);
+                        updateMessageInCard(modelId, `Error: ${error.message}`, false);
+                        pendingResponses.delete(modelId);
                         
-                        // Mark this model as complete (even if error)
-                        pendingResponses.delete(uiModelId);
-                        console.log(`[DEBUG] Model ${uiModelId} errored. Remaining: ${pendingResponses.size}`);
-                        
-                        // Reset currentMessageId only when all models are done
                         if (pendingResponses.size === 0) {
-                            console.log('[DEBUG] All models completed, resetting currentMessageId');
                             currentMessageId = null;
                         }
                     }
-                );
+                });
             } else {
                 // Fallback with mock responses
                 selectedModels.forEach(modelId => {
                     setTimeout(() => {
-                        const mockResponse = `This is a mock response from ${modelConfigs[modelId].name} for: "${message}"\n\nThe GPT4Free integration is still loading. Please wait a moment and try again.`;
+                        const mockResponse = `This is a mock response from ${modelConfigs[modelId].name} for: "${message}"\n\nThe LocalServerProvider is still loading. Please wait a moment and try again.`;
                         updateMessageInCard(modelId, mockResponse, false);
                     }, 1000);
                 });
@@ -2748,7 +2748,7 @@
         const accumulatedContent = {};
         // Track last update time to throttle updates
         const lastUpdateTime = {};
-        const UPDATE_THROTTLE_MS = 50; // Minimum time between updates in milliseconds
+        const UPDATE_THROTTLE_MS = 10; // Minimum time between updates in milliseconds (reduced for better streaming)
         
         function updateMessageInCard(modelId, content, isStreaming) {
             const responseElId = `response-${modelId}-${currentMessageId}`;
@@ -2762,24 +2762,28 @@
                     const updateKey = `${modelId}-${currentMessageId}`;
                     const now = Date.now();
                     
-                    // Throttle streaming updates to prevent visual artifacts
+                    // Minimal throttling for streaming to maintain smooth performance
                     if (isStreaming) {
                         const lastUpdate = lastUpdateTime[updateKey] || 0;
-                        if (now - lastUpdate < UPDATE_THROTTLE_MS) {
-                            // Store the content but don't update DOM yet
-                            accumulatedContent[updateKey] = content;
-                            // Schedule an update after the throttle period
-                            setTimeout(() => {
-                                const latestContent = accumulatedContent[updateKey];
-                                if (latestContent && document.getElementById(responseElId)) {
-                                    const formattedContent = latestContent.replace(/\n/g, '<br>');
-                                    const contentEl = document.getElementById(responseElId).querySelector('.message-content');
-                                    if (contentEl) {
-                                        contentEl.innerHTML = formattedContent;
+                        // Only throttle if updates are coming too frequently (less than 5ms apart)
+                        if (now - lastUpdate < 5) {
+                            // For very frequent updates, use requestAnimationFrame for smooth rendering
+                            if (!accumulatedContent[updateKey + '_scheduled']) {
+                                accumulatedContent[updateKey] = content;
+                                accumulatedContent[updateKey + '_scheduled'] = true;
+                                requestAnimationFrame(() => {
+                                    const latestContent = accumulatedContent[updateKey];
+                                    if (latestContent && document.getElementById(responseElId)) {
+                                        const formattedContent = latestContent.replace(/\n/g, '<br>');
+                                        const contentEl = document.getElementById(responseElId).querySelector('.message-content');
+                                        if (contentEl) {
+                                            contentEl.innerHTML = formattedContent;
+                                        }
+                                        lastUpdateTime[updateKey] = Date.now();
                                     }
-                                    lastUpdateTime[updateKey] = Date.now();
-                                }
-                            }, UPDATE_THROTTLE_MS - (now - lastUpdate));
+                                    delete accumulatedContent[updateKey + '_scheduled'];
+                                });
+                            }
                             return;
                         }
                         lastUpdateTime[updateKey] = now;
@@ -2793,6 +2797,7 @@
                     if (!isStreaming) {
                         // Clear accumulated content and timing for this model
                         delete accumulatedContent[updateKey];
+                        delete accumulatedContent[updateKey + '_scheduled'];
                         delete lastUpdateTime[updateKey];
                     }
                 }
@@ -3015,57 +3020,11 @@
             // Initialize cards for mobile
             initializeCards();
             
-            // Wait for GPT4Free to initialize
-            function checkGPT4Free() {
-                if (window.gpt4FreeIntegration) {
-                    console.log('GPT4Free integration ready');
-                    
-                    // Force use of Pollinations for models that don't work with Puter
-                    // Gemini uses Pollinations, DeepSeek uses GPT4Free OpenRouter
-                    window.gpt4FreeIntegration.forcePollinationsModels = ['gemini', 'gemini-pro'];
-                    
-                    // Update model configs based on provider
-                    updateModelConfigs();
-                    
-                    // Handle Claude availability
-                    if (window.gpt4FreeIntegration.usingPollinations) {
-                        console.log('Using Pollinations.AI - disabling Claude');
-                        
-                        // Disable Claude toggle
-                        const claudeToggles = document.querySelectorAll('.model-toggle-switch[data-model="claude"]');
-                        claudeToggles.forEach(toggle => {
-                            toggle.classList.remove('active');
-                            toggle.classList.add('disabled');
-                            toggle.style.opacity = '0.5';
-                            toggle.style.cursor = 'not-allowed';
-                            toggle.setAttribute('title', 'Claude is not available with Pollinations.AI');
-                            
-                            // Also disable the label
-                            const label = toggle.parentElement.querySelector('.model-label');
-                            if (label) {
-                                label.style.opacity = '0.5';
-                                label.style.cursor = 'not-allowed';
-                                label.title = 'Claude is not available with Pollinations.AI';
-                            }
-                        });
-                        
-                        // Remove Claude from selected models
-                        selectedModels = selectedModels.filter(m => m !== 'claude');
-                        
-                        // Remove Claude card if it exists
-                        const claudeCard = document.getElementById('card-claude');
-                        if (claudeCard) {
-                            claudeCard.remove();
-                            updateScrollIndicators();
-                        }
-                    }
-                } else {
-                    console.log('Waiting for GPT4Free...');
-                    setTimeout(checkGPT4Free, 1000);
-                }
-            }
+            // LocalServerProvider is initialized via models.js - no waiting needed
+            console.log('LocalServerProvider will be initialized via models.js');
             
-            checkGPT4Free();
+            // Update model configurations for LocalServerProvider
+            updateModelConfigs();
         }
         
         // Run initialization when DOM is ready

@@ -43,19 +43,26 @@ class ComparisonManager {
     // Enhance prompt if boost is enabled
     const enhancedMessage = promptBoost ? this.enhancePrompt(message) : message
 
-    // Add user message to chat
+    // Add user message to global chat for UI display
     window.storageManager.addMessage({
       role: "user",
       content: message,
       messageId,
     })
 
+    // Add user message to each selected model's independent chat history
+    models.forEach(modelId => {
+      window.storageManager.addMessageToModel(modelId, {
+        role: "user",
+        content: message
+      });
+    });
+
     // Create comparison cards for each model
     this.createComparisonCards(models, messageId)
 
-    // Prepare messages for API calls
-    const currentChat = window.storageManager.getCurrentChat()
-    const messages = this.formatMessagesForAPI(currentChat.messages)
+    // Don't pass global chat history - let each model maintain its own independent history
+    // The GPT4Free integration will handle model-specific conversation history
 
     // Create a mapping between GPT4Free model IDs and our UI model IDs
     const modelIdMapping = new Map();
@@ -68,157 +75,9 @@ class ComparisonManager {
     });
 
     try {
-      if (window.gpt4FreeIntegration) {
-        await window.gpt4FreeIntegration.sendMessageToAllModels(
-          message, // The user message
-          modelIds, // The model IDs to send to
-          // onChunk
-          (gpt4freeModelId, chunk, fullText) => {
-            // Map back to UI model ID
-            const uiModelId = modelIdMapping.get(gpt4freeModelId) || gpt4freeModelId;
-            console.log(`Received chunk from GPT4Free model ${gpt4freeModelId} (UI: ${uiModelId}):`, chunk, "Full text:", fullText);
-            const cardId = `card-${uiModelId}-${messageId}`;
-            const responseElement = document.getElementById(`response-${cardId}`);
-            const typingElement = document.getElementById(`typing-${cardId}`);
-            
-            if (responseElement) {
-              // Hide typing indicator and show response
-              if (typingElement) typingElement.style.display = "none";
-              responseElement.style.display = "block";
-              responseElement.textContent = fullText;
-              responseElement.classList.add("streaming");
-              
-              // Update metrics
-              this.updateCardMetrics(cardId, fullText);
-            } else {
-              console.error(`Response element not found for ${cardId}. Available cards:`, 
-                Array.from(document.querySelectorAll('.model-card')).map(card => card.id));
-              // Try to create the card if it doesn't exist
-              if (!document.getElementById(cardId)) {
-                console.log(`Attempting to create missing card for ${uiModelId}`);
-                this.createComparisonCards([uiModelId], messageId);
-                // Retry after a short delay
-                setTimeout(() => {
-                  const retryElement = document.getElementById(`response-${cardId}`);
-                  if (retryElement) {
-                    retryElement.style.display = "block";
-                    retryElement.textContent = fullText;
-                    retryElement.classList.add("streaming");
-                    this.updateCardMetrics(cardId, fullText);
-                  }
-                }, 100);
-              }
-            }
-          },
-          // onComplete
-          (gpt4freeModelId, result) => {
-            // Map back to UI model ID
-            const uiModelId = modelIdMapping.get(gpt4freeModelId) || gpt4freeModelId;
-            console.log(`Received complete response from GPT4Free model ${gpt4freeModelId} (UI: ${uiModelId}):`, result);
-            const cardId = `card-${uiModelId}-${messageId}`;
-            const responseElement = document.getElementById(`response-${cardId}`);
-            const statusElement = document.getElementById(`status-${cardId}`);
-            const timeElement = document.getElementById(`time-${cardId}`);
-            
-            if (responseElement) {
-              // Update final state
-              responseElement.classList.remove("streaming");
-              if (statusElement) {
-                statusElement.classList.remove("streaming");
-                statusElement.classList.add("complete");
-              }
-              
-              if (timeElement) {
-                timeElement.textContent = window.Utils.formatDuration(result.responseTime || 0);
-              }
-              
-              // Store response data
-              this.responseData.set(cardId, {
-                text: result.text,
-                responseTime: result.responseTime || 0,
-                wordCount: result.text.split(/\s+/).length,
-                model: uiModelId,
-                messageId,
-              });
-              
-              // Add assistant message to chat
-              window.storageManager.addMessage({
-                role: "assistant",
-                content: result.text,
-                model: uiModelId,
-                messageId,
-                responseTime: result.responseTime || 0,
-                wordCount: result.text.split(/\s+/).length,
-              });
-              
-              // Update token counter (approximate)
-              this.updateTokenCounter();
-            } else {
-              console.error(`Response element not found for ${cardId}`);
-            }
-
-            // Check if all models have completed for this message
-            this.checkMessageCompletion(messageId);
-          },
-          // onError
-          (gpt4freeModelId, error) => {
-            // Map back to UI model ID
-            const uiModelId = modelIdMapping.get(gpt4freeModelId) || gpt4freeModelId;
-            const cardId = `card-${uiModelId}-${messageId}`;
-            const responseElement = document.getElementById(`response-${cardId}`);
-            const typingElement = document.getElementById(`typing-${cardId}`);
-            const statusElement = document.getElementById(`status-${cardId}`);
-            const timeElement = document.getElementById(`time-${cardId}`);
-            
-            console.error(`Error with GPT4Free model ${gpt4freeModelId} (UI: ${uiModelId}):`, error);
-
-            if (responseElement) {
-              // Show error state
-              if (typingElement) typingElement.style.display = "none";
-              responseElement.style.display = "block";
-
-              // Provide user-friendly error messages
-              let errorDisplay = "Unknown error";
-              if (error.isServerError) {
-                errorDisplay = "🚨 Service temporarily unavailable (Server Error)";
-              } else if (error.message) {
-                if (error.message.includes("timeout")) {
-                  errorDisplay = "⏱️ Request timed out - please try again";
-                } else if (error.message.includes("network") || error.message.includes("fetch")) {
-                  errorDisplay = "🌐 Network error - check your connection";
-                } else if (error.message.includes("API request failed")) {
-                  errorDisplay = "🔧 API temporarily unavailable";
-                } else {
-                  errorDisplay = error.message;
-                }
-              }
-
-              responseElement.innerHTML = `
-                <div style="color: var(--error); font-style: italic; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2);">
-                  ❌ ${errorDisplay}
-                </div>
-              `;
-              
-              if (statusElement) {
-                statusElement.classList.remove("streaming");
-                statusElement.classList.add("error");
-              }
-              
-              if (timeElement) {
-                timeElement.textContent = "Error";
-              }
-            }
-
-            // Check if all models have completed for this message (including errors)
-            this.checkMessageCompletion(messageId);
-          },
-          streaming // Pass the streaming parameter
-        );
-      } else {
-        // Fallback to the old method if GPT4Free is not available
-        const promises = models.map((modelId) => this.sendToModel(modelId, messages, messageId));
-        await Promise.allSettled(promises);
-      }
+      // Use ModelManager directly since gpt4FreeIntegration is not available
+      const promises = models.map((modelId) => this.sendToModel(modelId, [message], messageId));
+      await Promise.allSettled(promises);
     } catch (error) {
       console.error("Error in comparison:", error);
     }
@@ -347,9 +206,19 @@ class ComparisonManager {
     let fullResponse = ""
 
     try {
+      // Get the user message from the current chat for this specific messageId
+      const currentChat = window.storageManager.getCurrentChat()
+      const userMessage = currentChat.messages.find(msg => msg.messageId === messageId && msg.role === "user")
+      
+      if (!userMessage) {
+        console.error(`User message not found for messageId: ${messageId}`)
+        return
+      }
+
+      // Use ModelManager which handles model-specific history through LocalServerProvider
       await window.modelManager.sendMessage(
         modelId,
-        messages,
+        [userMessage], // Pass the user message
         // onChunk
         (chunk, fullText) => {
           fullResponse = fullText
@@ -391,7 +260,7 @@ class ComparisonManager {
             messageId,
           })
 
-          // Add assistant message to chat
+          // Add assistant message to global chat for UI display
           window.storageManager.addMessage({
             role: "assistant",
             content: result.text,
@@ -425,7 +294,7 @@ class ComparisonManager {
           if (timeElement) {
             timeElement.textContent = "Error"
           }
-        },
+        }
       )
     } catch (error) {
       console.error(`Failed to send to ${modelId}:`, error)
@@ -512,14 +381,9 @@ class ComparisonManager {
       statusElement.classList.add("streaming")
     }
 
-    // Get current chat messages
-    const currentChat = window.storageManager.getCurrentChat()
-    const messages = this.formatMessagesForAPI(
-      currentChat.messages.filter((msg) => msg.messageId === messageId && msg.role === "user"),
-    )
-
-    // Resend to model
-    await this.sendToModel(model, messages, messageId)
+    // Don't pass global chat history - let the model maintain its own independent history
+    // The GPT4Free integration will handle model-specific conversation history
+    await this.sendToModel(model, [], messageId)
   }
 
   continueWithModel(cardId, responseData) {

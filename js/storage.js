@@ -29,6 +29,7 @@ class StorageManager {
       id: chatId,
       title: "New Chat",
       messages: [],
+      modelChats: {}, // Store independent chat history for each model
       createdAt: new Date(),
       updatedAt: new Date(),
       selectedModels: ["chatgpt"],
@@ -68,12 +69,67 @@ class StorageManager {
 
   addMessage(message) {
     const currentChat = this.getCurrentChat()
+    
+    // Add to global messages for UI display
     currentChat.messages.push({
       ...message,
       id: window.Utils.generateId(),
       timestamp: new Date(),
     })
 
+    // Add to model-specific chat history if model is specified
+    if (message.model) {
+      if (!currentChat.modelChats[message.model]) {
+        currentChat.modelChats[message.model] = {
+          messages: [],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+      
+      currentChat.modelChats[message.model].messages.push({
+        role: message.role,
+        content: message.content,
+        timestamp: new Date(),
+      })
+      currentChat.modelChats[message.model].updatedAt = new Date()
+    }
+
+    this.updateCurrentChat(currentChat)
+  }
+
+  // Get conversation history for a specific model
+  getModelChatHistory(modelId) {
+    const currentChat = this.getCurrentChat()
+    if (!currentChat.modelChats[modelId]) {
+      currentChat.modelChats[modelId] = {
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    }
+    return currentChat.modelChats[modelId].messages
+  }
+
+  // Add message to specific model's chat history
+  addMessageToModel(modelId, message) {
+    const currentChat = this.getCurrentChat()
+    
+    if (!currentChat.modelChats[modelId]) {
+      currentChat.modelChats[modelId] = {
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    }
+    
+    currentChat.modelChats[modelId].messages.push({
+      role: message.role,
+      content: message.content,
+      timestamp: new Date(),
+    })
+    currentChat.modelChats[modelId].updatedAt = new Date()
+    
     this.updateCurrentChat(currentChat)
   }
 
