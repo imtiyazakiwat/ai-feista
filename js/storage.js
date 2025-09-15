@@ -59,7 +59,27 @@ class StorageManager {
     if (currentChat.title === "New Chat" && currentChat.messages.length > 0) {
       const firstMessage = currentChat.messages.find((msg) => msg.role === "user")
       if (firstMessage) {
-        currentChat.title = firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? "..." : "")
+        // Try to generate a better title using Gemini API
+        this.generateChatTitle(firstMessage.content, currentChat.id)
+          .then(title => {
+            if (title && title !== "New Chat") {
+              const chat = this.chatHistory.find(c => c.id === currentChat.id)
+              if (chat) {
+                chat.title = title
+                this.saveChatHistory()
+                window.Utils.eventEmitter.emit("chatUpdated", chat)
+                // Update UI
+                this.updateChatTitleInUI(chat.id, title)
+              }
+            }
+          })
+          .catch(error => {
+            console.log("Failed to generate chat title:", error)
+            // Fallback to simple truncation
+            currentChat.title = firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? "..." : "")
+            this.saveChatHistory()
+            window.Utils.eventEmitter.emit("chatUpdated", currentChat)
+          })
       }
     }
 
@@ -270,6 +290,63 @@ class StorageManager {
       console.error("Error importing data:", error)
       return false
     }
+  }
+
+  // Generate chat title using Gemini API
+  async generateChatTitle(firstMessage, chatId) {
+    try {
+      // Use Gemini model to generate a concise title
+      const prompt = `Generate a concise, descriptive title (max 6 words) for a chat that starts with this message: "${firstMessage}"`
+      
+      // Use the local server provider to call Gemini
+      if (window.modelManager && window.modelManager.localServerProvider) {
+        return new Promise((resolve, reject) => {
+          window.modelManager.localServerProvider.sendMessage(
+            'gemini',
+            [{ role: 'user', content: prompt }],
+            () => {}, // onChunk
+            (result) => {
+              resolve(result.text.trim())
+            },
+            (error) => {
+              reject(error)
+            }
+          )
+        })
+      }
+      
+      // Fallback: simple truncation
+      return firstMessage.substring(0, 50) + (firstMessage.length > 50 ? "..." : "")
+    } catch (error) {
+      console.log("Error generating chat title:", error)
+      // Fallback: simple truncation
+      return firstMessage.substring(0, 50) + (firstMessage.length > 50 ? "..." : "")
+    }
+  }
+
+  // Update chat title in UI
+  updateChatTitleInUI(chatId, newTitle) {
+    const chatItem = document.querySelector(`[data-chat-id="${chatId}"]`)
+    if (chatItem) {
+      const titleElement = chatItem.querySelector('.chat-title')
+      if (titleElement) {
+        titleElement.textContent = newTitle
+      }
+    }
+  }
+
+  // Rename chat
+  renameChat(chatId, newTitle) {
+    const chat = this.chatHistory.find(c => c.id === chatId)
+    if (chat && newTitle.trim()) {
+      chat.title = newTitle.trim()
+      chat.updatedAt = new Date()
+      this.saveChatHistory()
+      this.updateChatTitleInUI(chatId, newTitle.trim())
+      window.Utils.eventEmitter.emit("chatUpdated", chat)
+      return true
+    }
+    return false
   }
 
   // Clear all data

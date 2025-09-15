@@ -62,16 +62,16 @@ class ComparisonManager {
     this.createComparisonCards(models, messageId)
 
     // Don't pass global chat history - let each model maintain its own independent history
-    // The GPT4Free integration will handle model-specific conversation history
+    // The LocalServerProvider will handle model-specific conversation history
 
-    // Create a mapping between GPT4Free model IDs and our UI model IDs
+    // Create a mapping between LocalServerProvider model IDs and our UI model IDs
     const modelIdMapping = new Map();
     const modelIds = models.map(modelId => {
       const model = window.modelManager ? window.modelManager.getModel(modelId) : null;
-      const gpt4freeModelId = model ? (model.modelId || modelId) : modelId;
-      modelIdMapping.set(gpt4freeModelId, modelId); // Map GPT4Free ID back to UI ID
-      console.log(`Mapping UI model ${modelId} to GPT4Free model:`, gpt4freeModelId);
-      return gpt4freeModelId;
+      const localServerModelId = model ? (model.modelId || modelId) : modelId;
+      modelIdMapping.set(localServerModelId, modelId); // Map LocalServerProvider ID back to UI ID
+      console.log(`Mapping UI model ${modelId} to LocalServerProvider model:`, localServerModelId);
+      return localServerModelId;
     });
 
     try {
@@ -382,7 +382,7 @@ class ComparisonManager {
     }
 
     // Don't pass global chat history - let the model maintain its own independent history
-    // The GPT4Free integration will handle model-specific conversation history
+    // The LocalServerProvider will handle model-specific conversation history
     await this.sendToModel(model, [], messageId)
   }
 

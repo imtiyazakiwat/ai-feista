@@ -21,8 +21,8 @@ class NetlifyProvider {
         endpoint: `${this.localServerUrl}/chat/completions`
       },
       'claude': {
-        modelId: 'claude-3.7-sonnet-thinking',
-        name: 'Claude 3.7 Sonnet',
+        modelId: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
         requiresAuth: true,
         provider: 'PuterJS',
         endpoint: `${this.localServerUrl}/chat/completions`

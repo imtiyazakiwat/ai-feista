@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Naming Test - AI Fiesta</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .test-button.danger {
+            background: #dc3545;
+        }
+        .test-button.danger:hover {
+            background: #c82333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .chat-list {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .chat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .chat-item:last-child {
+            border-bottom: none;
+        }
+        .chat-item.active {
+            background: #e3f2fd;
+        }
+        .chat-content {
+            flex: 1;
+        }
+        .chat-title {
+            font-weight: 500;
+            color: #333;
+        }
+        .chat-preview {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .chat-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-action-btn {
+            background: none;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .chat-action-btn:hover {
+            background: #f0f0f0;
+        }
+        .chat-action-btn.danger:hover {
+            background: #fee;
+            color: #c33;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Chat Naming Test - AI Fiesta</h1>
+        <p>This test demonstrates the chat naming, renaming, and deletion functionality.</p>
+
+        <div class="test-section">
+            <h3>📝 Test Chat Naming with Gemini</h3>
+            <p>Test automatic chat title generation using the Gemini model:</p>
+            <button class="test-button" onclick="testGeminiNaming()">Test Gemini Chat Naming</button>
+            <div id="geminiStatus" class="status" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>✏️ Test Chat Rename</h3>
+            <p>Test the chat rename functionality:</p>
+            <button class="test-button" onclick="testRename()">Test Rename Function</button>
+            <div id="renameStatus" class="status" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🗑️ Test Chat Delete</h3>
+            <p>Test the chat deletion functionality:</p>
+            <button class="test-button" onclick="testDelete()">Test Delete Function</button>
+            <div id="deleteStatus" class="status" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📋 Current Chats</h3>
+            <p>View and manage current chat list:</p>
+            <button class="test-button" onclick="loadChatList()">Refresh Chat List</button>
+            <div id="chatList" class="chat-list"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 Test Storage Manager</h3>
+            <p>Test the storage manager functions:</p>
+            <button class="test-button" onclick="testStorageManager()">Test Storage Manager</button>
+            <div id="storageStatus" class="status" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Mock the required dependencies
+        window.Utils = {
+            generateId: () => Math.random().toString(36).substr(2, 9),
+            sanitizeHtml: (text) => text,
+            formatDate: (date) => date.toLocaleDateString(),
+            showToast: (message, type) => {
+                console.log(`Toast [${type}]: ${message}`);
+            },
+            eventEmitter: {
+                emit: (event, data) => {
+                    console.log(`Event: ${event}`, data);
+                }
+            },
+            storage: {
+                get: (key, defaultValue) => {
+                    const item = localStorage.getItem(key);
+                    return item ? JSON.parse(item) : defaultValue;
+                },
+                set: (key, value) => {
+                    localStorage.setItem(key, JSON.stringify(value));
+                },
+                remove: (key) => {
+                    localStorage.removeItem(key);
+                }
+            }
+        };
+
+        // Mock model manager
+        window.modelManager = {
+            localServerProvider: {
+                sendMessage: (model, messages, onChunk, onComplete, onError) => {
+                    // Simulate Gemini API response
+                    setTimeout(() => {
+                        const prompt = messages[0].content;
+                        if (prompt.includes("Generate a concise, descriptive title")) {
+                            const userMessage = prompt.match(/"([^"]+)"/)?.[1] || "Test message";
+                            const title = userMessage.split(' ').slice(0, 4).join(' ') + "...";
+                            onComplete({ text: title });
+                        } else {
+                            onComplete({ text: "This is a test response from Gemini." });
+                        }
+                    }, 1000);
+                }
+            }
+        };
+
+        // Load the storage manager
+        const script = document.createElement('script');
+        script.src = 'js/storage.js';
+        script.onload = () => {
+            console.log('Storage manager loaded');
+        };
+        document.head.appendChild(script);
+
+        // Load the component manager
+        const componentScript = document.createElement('script');
+        componentScript.src = 'js/components.js';
+        componentScript.onload = () => {
+            console.log('Component manager loaded');
+        };
+        document.head.appendChild(componentScript);
+
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+            element.style.display = 'block';
+        }
+
+        async function testGeminiNaming() {
+            showStatus('geminiStatus', 'Testing Gemini chat naming...', 'info');
+            
+            try {
+                // Wait for storage manager to be available
+                await new Promise(resolve => {
+                    const checkInterval = setInterval(() => {
+                        if (window.storageManager) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                });
+
+                // Create a test chat
+                const chat = window.storageManager.createNewChat();
+                console.log('Created chat:', chat);
+
+                // Add a test message
+                window.storageManager.addMessage({
+                    role: "user",
+                    content: "What are the best practices for machine learning model deployment?",
+                    model: "gemini"
+                });
+
+                showStatus('geminiStatus', 'Chat created with test message. Check console for Gemini title generation.', 'success');
+            } catch (error) {
+                showStatus('geminiStatus', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        function testRename() {
+            showStatus('renameStatus', 'Testing chat rename...', 'info');
+            
+            try {
+                if (window.storageManager) {
+                    const chats = window.storageManager.getChatHistory();
+                    if (chats.length > 0) {
+                        const chatId = chats[0].id;
+                        const success = window.storageManager.renameChat(chatId, "Renamed Test Chat");
+                        if (success) {
+                            showStatus('renameStatus', 'Chat renamed successfully!', 'success');
+                        } else {
+                            showStatus('renameStatus', 'Failed to rename chat', 'error');
+                        }
+                    } else {
+                        showStatus('renameStatus', 'No chats available to rename', 'error');
+                    }
+                } else {
+                    showStatus('renameStatus', 'Storage manager not available', 'error');
+                }
+            } catch (error) {
+                showStatus('renameStatus', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        function testDelete() {
+            showStatus('deleteStatus', 'Testing chat delete...', 'info');
+            
+            try {
+                if (window.storageManager) {
+                    const chats = window.storageManager.getChatHistory();
+                    if (chats.length > 0) {
+                        const chatId = chats[0].id;
+                        window.storageManager.deleteChat(chatId);
+                        showStatus('deleteStatus', 'Chat deleted successfully!', 'success');
+                    } else {
+                        showStatus('deleteStatus', 'No chats available to delete', 'error');
+                    }
+                } else {
+                    showStatus('deleteStatus', 'Storage manager not available', 'error');
+                }
+            } catch (error) {
+                showStatus('deleteStatus', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        function loadChatList() {
+            const chatListElement = document.getElementById('chatList');
+            
+            if (window.storageManager) {
+                const chats = window.storageManager.getChatHistory();
+                
+                if (chats.length === 0) {
+                    chatListElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No chats available</div>';
+                    return;
+                }
+
+                chatListElement.innerHTML = chats.map(chat => `
+                    <div class="chat-item">
+                        <div class="chat-content">
+                            <div class="chat-title">${chat.title}</div>
+                            <div class="chat-preview">${window.Utils.formatDate(new Date(chat.updatedAt))}</div>
+                        </div>
+                        <div class="chat-actions">
+                            <button class="chat-action-btn" onclick="renameChat('${chat.id}')">Rename</button>
+                            <button class="chat-action-btn danger" onclick="deleteChat('${chat.id}')">Delete</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                chatListElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Storage manager not available</div>';
+            }
+        }
+
+        function renameChat(chatId) {
+            const newTitle = prompt('Enter new chat title:', '');
+            if (newTitle && window.storageManager) {
+                const success = window.storageManager.renameChat(chatId, newTitle);
+                if (success) {
+                    loadChatList();
+                    showStatus('renameStatus', 'Chat renamed successfully!', 'success');
+                } else {
+                    showStatus('renameStatus', 'Failed to rename chat', 'error');
+                }
+            }
+        }
+
+        function deleteChat(chatId) {
+            if (confirm('Are you sure you want to delete this chat?')) {
+                if (window.storageManager) {
+                    window.storageManager.deleteChat(chatId);
+                    loadChatList();
+                    showStatus('deleteStatus', 'Chat deleted successfully!', 'success');
+                }
+            }
+        }
+
+        function testStorageManager() {
+            showStatus('storageStatus', 'Testing storage manager...', 'info');
+            
+            try {
+                if (window.storageManager) {
+                    // Test creating a chat
+                    const chat = window.storageManager.createNewChat();
+                    console.log('Created chat:', chat);
+
+                    // Test adding a message
+                    window.storageManager.addMessage({
+                        role: "user",
+                        content: "Test message",
+                        model: "gemini"
+                    });
+
+                    // Test getting chat history
+                    const chats = window.storageManager.getChatHistory();
+                    console.log('Chat history:', chats);
+
+                    showStatus('storageStatus', `Storage manager working! Created chat with ID: ${chat.id}`, 'success');
+                } else {
+                    showStatus('storageStatus', 'Storage manager not available', 'error');
+                }
+            } catch (error) {
+                showStatus('storageStatus', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Load chat list on page load
+        window.addEventListener('load', () => {
+            setTimeout(loadChatList, 1000);
+        });
+    </script>
+</body>
+</html>

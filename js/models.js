@@ -87,7 +87,7 @@ class ModelManager {
       },
       "claude": {
         name: "Claude",
-        modelId: "claude-3-haiku",
+        modelId: "claude-sonnet-4-20250514",
         color: "#D97706",
         icon: "🧠",
         provider: "localserver"
@@ -176,7 +176,7 @@ class ModelManager {
   }
 
   loadFallbackModels() {
-    // Use working model IDs - these should match what's actually available in GPT4Free
+    // Use working model IDs - these should match what's actually available in LocalServerProvider
     this.models = {
       "chatgpt": {
         name: "ChatGPT",
@@ -187,7 +187,7 @@ class ModelManager {
       },
       "claude": {
         name: "Claude",
-        modelId: "claude-3-haiku", // This seems to work
+        modelId: "claude-sonnet-4-20250514", // Updated to Claude Sonnet 4
         color: "#D97706",
         icon: "🧠",
         provider: "localserver"

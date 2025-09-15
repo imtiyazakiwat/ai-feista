@@ -99,6 +99,24 @@ class ComponentManager {
     if (scrollRight) {
       scrollRight.addEventListener("click", () => this.scrollComparisonGrid(500))
     }
+
+    // Rename modal Enter key handling
+    const renameInput = document.getElementById("renameChatInput")
+    if (renameInput) {
+      renameInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          this.confirmRename()
+        }
+      })
+    }
+
+    // Escape key handling for modals
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.closeRenameModal()
+        this.closeDeleteModal()
+      }
+    })
   }
 
   initializeComponents() {
@@ -321,8 +339,26 @@ class ComponentManager {
         .map(
           (chat) => `
         <div class="chat-item ${chat.id === currentChatId ? "active" : ""}" data-chat-id="${chat.id}">
-          <div class="chat-title">${window.Utils.sanitizeHtml(chat.title)}</div>
-          <div class="chat-preview">${window.Utils.formatDate(new Date(chat.updatedAt))}</div>
+          <div class="chat-content" onclick="window.componentManager.switchToChat('${chat.id}')">
+            <div class="chat-title">${window.Utils.sanitizeHtml(chat.title)}</div>
+            <div class="chat-preview">${window.Utils.formatDate(new Date(chat.updatedAt))}</div>
+          </div>
+          <div class="chat-actions">
+            <button class="chat-action-btn" onclick="event.stopPropagation(); window.componentManager.openRenameModal('${chat.id}', '${chat.title.replace(/'/g, "\\'")}')" title="Rename chat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </button>
+            <button class="chat-action-btn danger" onclick="event.stopPropagation(); window.componentManager.openDeleteModal('${chat.id}')" title="Delete chat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3,6 5,6 21,6"></polyline>
+                <path d="M19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+              </svg>
+            </button>
+          </div>
         </div>
       `,
         )
@@ -331,7 +367,7 @@ class ComponentManager {
       // Add click listeners to chat items
       chatList.addEventListener("click", (e) => {
         const chatItem = e.target.closest(".chat-item")
-        if (chatItem) {
+        if (chatItem && !e.target.closest(".chat-actions")) {
           this.switchToChat(chatItem.dataset.chatId)
         }
       })
@@ -499,6 +535,83 @@ class ComponentManager {
     if (isEnabled) {
       window.Utils.showToast("Prompt boost enabled ✨", "info")
     }
+  }
+
+  // Chat rename and delete functionality
+  openRenameModal(chatId, currentTitle) {
+    this.currentEditingChatId = chatId
+    const modal = document.getElementById("renameChatModal")
+    const input = document.getElementById("renameChatInput")
+    
+    if (modal && input) {
+      input.value = currentTitle
+      modal.classList.add("active")
+      
+      // Focus input
+      setTimeout(() => {
+        input.focus()
+        input.select()
+      }, 100)
+    }
+  }
+
+  closeRenameModal() {
+    const modal = document.getElementById("renameChatModal")
+    if (modal) {
+      modal.classList.remove("active")
+    }
+    this.currentEditingChatId = null
+  }
+
+  confirmRename() {
+    if (!this.currentEditingChatId) return
+    
+    const input = document.getElementById("renameChatInput")
+    const newTitle = input?.value.trim()
+    
+    if (newTitle && window.storageManager.renameChat(this.currentEditingChatId, newTitle)) {
+      window.Utils.showToast("Chat renamed successfully", "success")
+      this.loadChatHistory()
+    } else {
+      window.Utils.showToast("Failed to rename chat", "error")
+    }
+    
+    this.closeRenameModal()
+  }
+
+  openDeleteModal(chatId) {
+    this.currentDeletingChatId = chatId
+    const modal = document.getElementById("deleteChatModal")
+    if (modal) {
+      modal.classList.add("active")
+    }
+  }
+
+  closeDeleteModal() {
+    const modal = document.getElementById("deleteChatModal")
+    if (modal) {
+      modal.classList.remove("active")
+    }
+    this.currentDeletingChatId = null
+  }
+
+  confirmDelete() {
+    if (!this.currentDeletingChatId) return
+    
+    const chatId = this.currentDeletingChatId
+    const currentChatId = window.storageManager.currentChatId
+    
+    // Delete the chat
+    window.storageManager.deleteChat(chatId)
+    
+    // If deleting current chat, create new one
+    if (chatId === currentChatId) {
+      this.createNewChat()
+    }
+    
+    this.loadChatHistory()
+    this.closeDeleteModal()
+    window.Utils.showToast("Chat deleted successfully", "success")
   }
 
   // Utility methods for other components

@@ -20,8 +20,8 @@ class LocalServerProvider {
         provider: 'PuterJS'
       },
       'claude': {
-        modelId: 'claude-3.7-sonnet-thinking',
-        name: 'Claude 3.7 Sonnet',
+        modelId: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
         requiresAuth: true,
         provider: 'PuterJS'
       },
@@ -80,6 +80,7 @@ class LocalServerProvider {
         
         this.authTokens = tokens;
         console.log(`[LocalServer] Loaded ${tokens.length} tokens from api.txt`);
+        console.log(`[LocalServer] Token list:`, tokens.map((t, i) => `${i + 1}: ${t.substring(0, 20)}...`));
         
         // Validate all tokens in parallel
         await this.validateTokens();
@@ -95,44 +96,78 @@ class LocalServerProvider {
 
   async validateTokens() {
     console.log('[LocalServer] Validating API tokens...');
+    
+    // Try to load cached valid tokens first
+    try {
+      const cached = localStorage.getItem('validApiTokens');
+      if (cached) {
+        const { tokens, timestamp } = JSON.parse(cached);
+        // Use cached tokens if they're less than 1 hour old
+        if (tokens && tokens.length > 0 && (Date.now() - timestamp) < 3600000) {
+          console.log(`[LocalServer] Using ${tokens.length} cached valid tokens`);
+          this.validTokens = tokens;
+          this.authToken = tokens[0];
+          return;
+        }
+      }
+    } catch (error) {
+      console.log('[LocalServer] Could not load cached tokens:', error.message);
+    }
+    
     const validationPromises = this.authTokens.map(async (token, index) => {
       try {
-        // Simple validation request with 5 second timeout
+        console.log(`[LocalServer] Starting validation for token ${index + 1}/${this.authTokens.length}`);
+        
+        // Simple validation request with 10 second timeout
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
+        const timeout = setTimeout(() => {
+          console.log(`[LocalServer] Token ${index + 1} validation timeout after 10 seconds`);
+          controller.abort();
+        }, 10000);
+        
+        const requestBody = {
+          path: `${this.baseUrl}/chat/completions`,
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: {
+            model: 'gpt-5-2025-08-07',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 1,
+            stream: false
+          }
+        };
+        
+        console.log(`[LocalServer] Sending validation request for token ${index + 1} to ${this.netlifyProxyUrl}`);
         
         const response = await fetch(this.netlifyProxyUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            path: `${this.baseUrl}/chat/completions`,
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            },
-            body: {
-              model: 'gpt-5-2025-08-07',
-              messages: [{ role: 'user', content: 'test' }],
-              max_tokens: 1,
-              stream: false
-            }
-          }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal
         });
         
         clearTimeout(timeout);
+        console.log(`[LocalServer] Token ${index + 1} validation response: ${response.status} ${response.statusText}`);
         
-        if (response.ok || response.status === 429) { // 429 means rate limited but valid
-          console.log(`[LocalServer] Token ${index + 1} is valid`);
+        if (response.ok || response.status === 429 || response.status === 400) { 
+          // 429 means rate limited but valid, 400 might be model-specific issues but token is valid
+          console.log(`[LocalServer] Token ${index + 1} is valid (${response.status})`);
           return token;
         } else {
-          console.log(`[LocalServer] Token ${index + 1} is invalid (${response.status})`);
+          const errorText = await response.text();
+          console.log(`[LocalServer] Token ${index + 1} is invalid (${response.status}): ${errorText.substring(0, 200)}`);
           return null;
         }
       } catch (error) {
-        console.log(`[LocalServer] Token ${index + 1} validation failed:`, error.message);
+        if (error.name === 'AbortError') {
+          console.log(`[LocalServer] Token ${index + 1} validation timed out`);
+        } else {
+          console.log(`[LocalServer] Token ${index + 1} validation failed:`, error.message, error.stack);
+        }
         return null;
       }
     });
@@ -150,29 +185,72 @@ class LocalServerProvider {
         timestamp: Date.now()
       }));
     } else {
-      console.warn('[LocalServer] No valid tokens found, using fallback');
-      this.authToken = this.authTokens[0]; // Use first token as fallback
+      console.warn('[LocalServer] No valid tokens found during validation, will try all tokens during rotation');
+      // Use all tokens as fallback for rotation
+      this.validTokens = [...this.authTokens];
+      this.authToken = this.authTokens[0];
     }
   }
 
   rotateToken() {
-    if (this.validTokens.length <= 1) {
-      console.log('[LocalServer] No other tokens to rotate to');
-      return false;
+    // If we have multiple valid tokens, rotate among them
+    if (this.validTokens.length > 1) {
+      this.currentTokenIndex = (this.currentTokenIndex + 1) % this.validTokens.length;
+      this.authToken = this.validTokens[this.currentTokenIndex];
+      console.log(`[LocalServer] Rotated to valid token ${this.currentTokenIndex + 1}/${this.validTokens.length} (${this.authToken.substring(0, 20)}...)`);
+      
+      // Update localStorage with new current token
+      localStorage.setItem('validApiTokens', JSON.stringify({
+        tokens: this.validTokens,
+        timestamp: Date.now(),
+        currentIndex: this.currentTokenIndex
+      }));
+      
+      return true;
     }
     
-    this.currentTokenIndex = (this.currentTokenIndex + 1) % this.validTokens.length;
-    this.authToken = this.validTokens[this.currentTokenIndex];
-    console.log(`[LocalServer] Rotated to token ${this.currentTokenIndex + 1}/${this.validTokens.length} (${this.authToken.substring(0, 20)}...)`);
+    // If we only have 1 valid token, try rotating through all available tokens
+    if (this.authTokens.length > 1) {
+      this.currentTokenIndex = (this.currentTokenIndex + 1) % this.authTokens.length;
+      this.authToken = this.authTokens[this.currentTokenIndex];
+      console.log(`[LocalServer] Rotated to untested token ${this.currentTokenIndex + 1}/${this.authTokens.length} (${this.authToken.substring(0, 20)}...)`);
+      
+      // Update localStorage with new current token
+      localStorage.setItem('validApiTokens', JSON.stringify({
+        tokens: this.validTokens,
+        timestamp: Date.now(),
+        currentIndex: this.currentTokenIndex
+      }));
+      
+      return true;
+    }
     
-    // Update localStorage with new current token
-    localStorage.setItem('validApiTokens', JSON.stringify({
-      tokens: this.validTokens,
-      timestamp: Date.now(),
-      currentIndex: this.currentTokenIndex
-    }));
+    // If we've tried all tokens and none work, clear cache and re-validate
+    if (this.authTokens.length > 0) {
+      console.log('[LocalServer] All tokens exhausted, clearing cache and re-validating...');
+      localStorage.removeItem('validApiTokens');
+      this.validTokens = [];
+      this.currentTokenIndex = 0;
+      this.authToken = this.authTokens[0];
+      
+      // Re-validate tokens in background
+      this.validateTokens().catch(console.error);
+      
+      return true;
+    }
     
-    return true;
+    console.log('[LocalServer] No other tokens to rotate to');
+    return false;
+  }
+
+  // Force re-validation of all tokens
+  async forceRevalidation() {
+    console.log('[LocalServer] Force re-validating all tokens...');
+    localStorage.removeItem('validApiTokens');
+    this.validTokens = [];
+    this.currentTokenIndex = 0;
+    this.authToken = this.authTokens[0];
+    await this.validateTokens();
   }
 
   getAvailableModels() {
@@ -217,7 +295,7 @@ class LocalServerProvider {
         const lastMessage = conversationMessages[conversationMessages.length - 1];
         const userMessage = lastMessage.role === 'user' ? lastMessage.content : '';
 
-        console.log(`[LocalServer] Attempt ${attempt}/${maxRetries} - Sending to ${modelKey} with provider: ${currentConfig.provider}`);
+        console.log(`[LocalServer] Attempt ${attempt}/${maxRetries} - Sending to ${modelKey} with provider: ${currentConfig.provider} (token: ${this.authToken.substring(0, 20)}...)`);
 
         // Add timeout wrapper
         const timeoutMs = 90000; // 90 seconds timeout for GPT-5
@@ -320,9 +398,12 @@ class LocalServerProvider {
           
           try {
             await this.processStreamingResponse(response, modelKey, onChunk, onComplete, wrappedOnError);
+            // If we get here, the request was successful
+            return;
           } catch (retryError) {
             if (retryError.message === 'AUTH_RETRY_NEEDED') {
               // Continue to retry with new token
+              console.log(`[LocalServer] Retrying request with new token for ${modelKey}...`);
               continue;
             } else {
               throw retryError;
@@ -330,8 +411,35 @@ class LocalServerProvider {
           }
         } else {
           const data = await response.json();
-          const text = this.extractTextFromResponse(data);
           
+          // Check for auth errors in non-streaming response
+          if (data.error) {
+            const errorMessage = data.error.message || data.error.type || '';
+            const isAuthError = errorMessage.includes('usage-limited') || 
+                              errorMessage.includes('401') || 
+                              errorMessage.includes('403') ||
+                              errorMessage.includes('unauthorized') ||
+                              errorMessage.includes('invalid') ||
+                              errorMessage.includes('expired') ||
+                              errorMessage.includes('subscription') ||
+                              errorMessage.includes('billing') ||
+                              (errorMessage.toLowerCase().includes('success') && errorMessage.toLowerCase().includes('false'));
+            
+            if (isAuthError && currentConfig.requiresAuth) {
+              console.log(`[LocalServer] Auth error in non-streaming response for ${modelKey}, attempting token rotation...`);
+              
+              if (this.rotateToken()) {
+                console.log(`[LocalServer] Retrying non-streaming request with new token for ${modelKey}...`);
+                continue;
+              } else {
+                console.error(`[LocalServer] No more tokens available for rotation`);
+                onError(new Error(`Auth error: ${errorMessage}`));
+                return;
+              }
+            }
+          }
+          
+          const text = this.extractTextFromResponse(data);
           onComplete({ text, model: modelKey });
         }
         
@@ -766,4 +874,39 @@ class LocalServerProvider {
 // Export for use in other files
 if (typeof window !== 'undefined') {
   window.LocalServerProvider = LocalServerProvider;
+  
+  // Expose global methods for debugging
+  window.forceTokenRevalidation = async () => {
+    if (window.localServerProvider) {
+      await window.localServerProvider.forceRevalidation();
+      console.log('[Global] Token revalidation completed');
+    } else {
+      console.error('[Global] LocalServerProvider not available');
+    }
+  };
+  
+  window.rotateToken = () => {
+    if (window.localServerProvider) {
+      const rotated = window.localServerProvider.rotateToken();
+      console.log('[Global] Token rotation:', rotated ? 'successful' : 'failed');
+      return rotated;
+    } else {
+      console.error('[Global] LocalServerProvider not available');
+      return false;
+    }
+  };
+  
+  window.getTokenStatus = () => {
+    if (window.localServerProvider) {
+      return {
+        totalTokens: window.localServerProvider.authTokens.length,
+        validTokens: window.localServerProvider.validTokens.length,
+        currentToken: window.localServerProvider.authToken ? window.localServerProvider.authToken.substring(0, 20) + '...' : 'none',
+        currentIndex: window.localServerProvider.currentTokenIndex
+      };
+    } else {
+      console.error('[Global] LocalServerProvider not available');
+      return null;
+    }
+  };
 }
