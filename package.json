@@ -1,17 +1,14 @@
 {
-  "name": "ai-fiesta-clone",
-  "version": "0.1.0",
+  "name": "ai-arena",
+  "version": "2.0.0",
   "private": true,
-  "description": "AI Fiesta - Multi-AI Chat Platform with Netlify Functions",
+  "description": "AI Arena - Multi-Model Chat Comparison Platform",
   "scripts": {
-    "build": "echo 'No build script needed for static site'",
-    "dev": "echo 'Run netlify dev for local development'",
-    "deploy": "echo 'Deploy to Netlify'"
+    "dev": "vercel dev",
+    "build": "echo 'Static site - no build needed'",
+    "start": "vercel dev"
   },
   "devDependencies": {
-    "netlify-cli": "^17.0.0"
-  },
-  "dependencies": {
-    "node-fetch": "^2.7.0"
+    "vercel": "^37.0.0"
   }
 }
