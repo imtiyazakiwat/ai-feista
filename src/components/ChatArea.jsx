@@ -87,6 +87,7 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
               message={msg}
               response={responses?.[modelKey]?.[idx]}
               model={model}
+              modelKey={modelKey}
               index={idx}
             />
           )

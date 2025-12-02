@@ -8,7 +8,8 @@ const MODELS = {
     icon: '/img/ChatGPT-Logo.png',
     color: '#10a37f',
     darkLogo: true,
-    fallbackId: 'openrouter:openai/gpt-4.1'
+    fallbackId: 'openrouter:openai/gpt-4.1',
+    supportsVision: true
   },
   claude: {
     id: 'openrouter:anthropic/claude-opus-4.5',
@@ -16,7 +17,8 @@ const MODELS = {
     icon: '/img/claude%20ai%20logo%20Background%20Removed.png',
     color: '#D97757',
     darkLogo: false,
-    fallbackId: 'openrouter:anthropic/claude-sonnet-4'
+    fallbackId: 'openrouter:anthropic/claude-sonnet-4',
+    supportsVision: true
   },
   gemini: {
     id: 'openrouter:google/gemini-3-pro-preview',
@@ -24,7 +26,8 @@ const MODELS = {
     icon: '/img/gemini%20Background%20Removed.png',
     color: '#4285f4',
     darkLogo: false,
-    fallbackId: 'openrouter:google/gemini-2.5-pro'
+    fallbackId: 'openrouter:google/gemini-2.5-pro',
+    supportsVision: true
   },
   perplexity: {
     id: 'openrouter:perplexity/sonar-pro-search',
@@ -32,7 +35,8 @@ const MODELS = {
     icon: '/img/perplexity%20Background%20Removed.png',
     color: '#20B8CD',
     darkLogo: false,
-    fallbackId: 'openrouter:perplexity/sonar-pro'
+    fallbackId: 'openrouter:perplexity/sonar-pro',
+    supportsVision: true
   },
   grok: {
     id: 'x-ai/grok-4.1-fast:free',
@@ -40,7 +44,8 @@ const MODELS = {
     icon: '/img/grok%20logo%20Background%20Removed.png',
     color: '#ffffff',
     darkLogo: true,
-    fallbackId: 'openrouter:x-ai/grok-3-fast'
+    fallbackId: 'openrouter:x-ai/grok-3-fast',
+    supportsVision: true
   },
   deepseek: {
     id: 'openrouter:deepseek/deepseek-v3.2',
@@ -48,7 +53,8 @@ const MODELS = {
     icon: '/img/deepseek%20logo%20Background%20Removed.png',
     color: '#4D6BFE',
     darkLogo: false,
-    fallbackId: 'openrouter:deepseek/deepseek-r1'
+    fallbackId: 'openrouter:deepseek/deepseek-r1',
+    supportsVision: false
   }
 }
 
@@ -65,6 +71,8 @@ const useStore = create(
       currentChatId: null,
       isGenerating: false,
       abortControllers: [],
+      searchQuery: '',
+      editingChatId: null,
 
       // Getters
       models: MODELS,
@@ -175,6 +183,20 @@ const useStore = create(
         }))
       },
 
+      setSearchQuery: (query) => set({ searchQuery: query }),
+      
+      setEditingChatId: (chatId) => set({ editingChatId: chatId }),
+
+      getFilteredChats: () => {
+        const { chats, searchQuery } = get()
+        if (!searchQuery.trim()) return chats
+        const query = searchQuery.toLowerCase()
+        return chats.filter(chat => 
+          chat.title?.toLowerCase().includes(query) ||
+          chat.messages?.some(m => m.content?.toLowerCase().includes(query))
+        )
+      },
+
       setGenerating: (isGenerating) => set({ isGenerating }),
       
       setAbortControllers: (controllers) => set({ abortControllers: controllers }),
@@ -182,6 +204,24 @@ const useStore = create(
       stopGenerating: () => {
         get().abortControllers.forEach(c => c.abort())
         set({ isGenerating: false, abortControllers: [] })
+      },
+
+      clearResponse: (modelKey, msgIndex) => {
+        set(state => {
+          const chat = state.chats.find(c => c.id === state.currentChatId)
+          if (!chat) return state
+          
+          const responses = { ...chat.responses }
+          if (responses[modelKey]) {
+            delete responses[modelKey][msgIndex]
+          }
+          
+          const updatedChat = { ...chat, responses, updatedAt: Date.now() }
+          
+          return {
+            chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
+          }
+        })
       }
     }),
     {

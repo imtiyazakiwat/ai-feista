@@ -1,6 +1,7 @@
 const LOCAL_API_URL = '/api/chat'
 const DIRECT_API_URL = 'https://unifiedapi.vercel.app/v1/chat/completions'
 const API_KEY = 'sk-0000d80ad3c542d29120527e66963a2e'
+const IMGBB_API_KEY = '2de73ee0c32047bad5393bf7db1cea9e'
 
 const useLocalApi = typeof window !== 'undefined' && 
   (window.location.hostname === 'localhost' || window.location.protocol === 'http:')
@@ -85,7 +86,7 @@ async function callApi(model, messages, signal) {
   })
 }
 
-function buildConversationHistory(messages, responses, modelKey) {
+function buildConversationHistory(messages, responses, modelKey, supportsVision = true) {
   const history = []
   
   // Add global system prompt with model-specific additions
@@ -97,7 +98,21 @@ function buildConversationHistory(messages, responses, modelKey) {
 
   messages.forEach((msg, idx) => {
     if (msg.role === 'user') {
-      history.push({ role: 'user', content: msg.content })
+      // Handle messages with images
+      if (msg.images && msg.images.length > 0 && supportsVision) {
+        const content = [
+          { type: 'text', text: msg.content }
+        ]
+        msg.images.forEach(imgUrl => {
+          content.push({
+            type: 'image_url',
+            image_url: { url: imgUrl }
+          })
+        })
+        history.push({ role: 'user', content })
+      } else {
+        history.push({ role: 'user', content: msg.content })
+      }
       // Add previous assistant response if exists (not for the current message being processed)
       const resp = responses?.[modelKey]?.[idx]
       if (resp?.content && !resp.isStreaming) {
@@ -109,11 +124,62 @@ function buildConversationHistory(messages, responses, modelKey) {
   return history
 }
 
+// Upload image to ImgBB and get URL
+export async function uploadImage(file) {
+  const formData = new FormData()
+  formData.append('image', file)
+  
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+    method: 'POST',
+    body: formData
+  })
+  
+  const data = await response.json()
+  if (data.success) {
+    return data.data.url
+  }
+  throw new Error(data.error?.message || 'Image upload failed')
+}
+
+// Enhance/improve a prompt using AI
+export async function enhancePrompt(prompt) {
+  try {
+    const response = await fetch(DIRECT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-sonnet-4',
+        messages: [{
+          role: 'user',
+          content: `Improve this prompt to get better AI responses. Make it clearer, more specific, and well-structured. Keep the same intent but enhance the quality. Return ONLY the improved prompt, nothing else - no explanations, no quotes, no prefixes.
+
+Original prompt: "${prompt}"`
+        }],
+        stream: false
+      })
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const enhanced = data.choices?.[0]?.message?.content?.trim()
+      if (enhanced && enhanced.length > 0) {
+        return enhanced
+      }
+    }
+  } catch (e) {
+    console.error('Failed to enhance prompt:', e)
+  }
+  return null
+}
+
 const FALLBACK_TIMEOUT_MS = 10000 // 10 seconds timeout before retry/fallback
 
 // retryState: 0 = first try, 1 = retry same model, 2 = use fallback
 async function streamResponse(modelKey, model, messages, responses, signal, onUpdate, retryState = 0) {
-  const history = buildConversationHistory(messages, responses, modelKey)
+  const history = buildConversationHistory(messages, responses, modelKey, model.supportsVision)
   
   // Ensure we have at least one user message
   if (!history.some(m => m.role === 'user')) {
@@ -344,13 +410,48 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
 }
 
 export async function sendToAllModels({ activeModels, models, messages, responses, controllers, onUpdate }) {
+  // Check if current message has images
+  const lastMessage = messages[messages.length - 1]
+  const hasImages = lastMessage?.images && lastMessage.images.length > 0
+
   const promises = activeModels.map((modelKey, idx) => {
     const model = models[modelKey]
     if (!model) return Promise.resolve()
+    
+    // If message has images and model doesn't support vision, show error
+    if (hasImages && !model.supportsVision) {
+      onUpdate(modelKey, {
+        content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
+        isStreaming: false,
+        unsupported: true
+      })
+      return Promise.resolve()
+    }
+    
     return streamResponse(modelKey, model, messages, responses, controllers[idx].signal, onUpdate)
   })
 
   await Promise.allSettled(promises)
+}
+
+// Regenerate response for a single model
+export async function regenerateSingleModel({ modelKey, model, messages, responses, onUpdate }) {
+  // Check if message has images and model doesn't support vision
+  const lastMessage = messages[messages.length - 1]
+  const hasImages = lastMessage?.images && lastMessage.images.length > 0
+  
+  if (hasImages && !model.supportsVision) {
+    onUpdate(modelKey, {
+      content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
+      isStreaming: false,
+      unsupported: true
+    })
+    return
+  }
+
+  const controller = new AbortController()
+  await streamResponse(modelKey, model, messages, responses, controller.signal, onUpdate)
+  return controller
 }
 
 export async function generateChatTitle(messages, currentTitle = null) {

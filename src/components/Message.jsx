@@ -1,5 +1,7 @@
-import { memo, useState, useEffect, Suspense, lazy, forwardRef } from 'react'
+import { memo, useState, Suspense, lazy, forwardRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
+import useStore from '../store/useStore'
+import { regenerateSingleModel } from '../utils/api'
 
 // Lazy load heavy markdown dependencies
 const MarkdownRenderer = lazy(() => import('./MarkdownRenderer'))
@@ -21,23 +23,101 @@ const GeneratingStatus = () => (
   </div>
 )
 
+const CopyButton = memo(({ content }) => {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(async () => {
+    if (!content) return
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }, [content])
+
+  return (
+    <button 
+      className={`copy-btn ${copied ? 'copied' : ''}`} 
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Copy response'}
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+        </svg>
+      )}
+    </button>
+  )
+})
+
+const RegenerateButton = memo(({ modelKey, model, index, disabled }) => {
+  const [regenerating, setRegenerating] = useState(false)
+  const { getCurrentChat, updateResponse, clearResponse, models } = useStore()
+
+  const handleRegenerate = useCallback(async () => {
+    if (regenerating || disabled) return
+    
+    const chat = getCurrentChat()
+    if (!chat) return
+    
+    setRegenerating(true)
+    clearResponse(modelKey, index)
+    
+    try {
+      await regenerateSingleModel({
+        modelKey,
+        model: models[modelKey],
+        messages: chat.messages,
+        responses: chat.responses || {},
+        onUpdate: (key, response) => {
+          updateResponse(key, index, response)
+        }
+      })
+    } finally {
+      setRegenerating(false)
+    }
+  }, [modelKey, model, index, regenerating, disabled, getCurrentChat, updateResponse, clearResponse, models])
+
+  return (
+    <button 
+      className={`regenerate-btn ${regenerating ? 'regenerating' : ''}`}
+      onClick={handleRegenerate}
+      disabled={regenerating || disabled}
+      title="Regenerate response"
+    >
+      {regenerating ? (
+        <svg className="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12"/>
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M23 4v6h-6M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+        </svg>
+      )}
+    </button>
+  )
+})
+
 const ThinkingSection = memo(({ thinking, thinkingTime, isStreaming, hasContent }) => {
   const [manualExpanded, setManualExpanded] = useState(null)
   
   if (!thinking) return null
 
-  // Auto-expand while streaming thinking, collapse when done (unless manually toggled)
   const isThinkingPhase = isStreaming && !hasContent
-  // Default to expanded if manually not set and we have thinking content
   const isExpanded = manualExpanded !== null ? manualExpanded : isThinkingPhase
-  
-  // Format thinking time - show "<1s" for very quick thinking
   const displayTime = thinkingTime || (thinking ? '<1s' : 'a moment')
 
   return (
     <div className={`thinking-section ${isExpanded ? 'expanded' : 'collapsed'} ${isThinkingPhase ? 'active' : ''}`}>
       {isThinkingPhase ? (
-        // While actively thinking - show header with spinner
         <div className="thinking-header">
           <svg className="thinking-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
@@ -45,7 +125,6 @@ const ThinkingSection = memo(({ thinking, thinkingTime, isStreaming, hasContent 
           <span>Thinking...</span>
         </div>
       ) : (
-        // After thinking is done - show collapsible toggle
         <button className="thinking-toggle" onClick={() => setManualExpanded(!isExpanded)}>
           <svg className="thinking-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 18l6-6-6-6"/>
@@ -62,11 +141,27 @@ const ThinkingSection = memo(({ thinking, thinkingTime, isStreaming, hasContent 
   )
 })
 
-const Message = memo(forwardRef(({ message, response, model, index }, ref) => {
+const ImagePreview = memo(({ images }) => {
+  if (!images || images.length === 0) return null
+  
+  return (
+    <div className="message-images">
+      {images.map((url, idx) => (
+        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="message-image">
+          <img src={url} alt={`Attached ${idx + 1}`} />
+        </a>
+      ))}
+    </div>
+  )
+})
+
+const Message = memo(forwardRef(({ message, response, model, index, modelKey }, ref) => {
+  const { isGenerating } = useStore()
   const isLoading = !response
   const hasError = response?.error
   const isStreaming = response?.isStreaming
   const hasContent = response?.content && response.content.length > 0
+  const isUnsupported = response?.unsupported
 
   return (
     <motion.div
@@ -82,7 +177,10 @@ const Message = memo(forwardRef(({ message, response, model, index }, ref) => {
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
         </div>
-        <div className="user-message-content">{message.content}</div>
+        <div className="user-message-content">
+          {message.content}
+          <ImagePreview images={message.images} />
+        </div>
       </div>
 
       <div className="message-assistant">
@@ -101,6 +199,8 @@ const Message = memo(forwardRef(({ message, response, model, index }, ref) => {
               </>
             ) : hasError ? (
               <div className="assistant-content error">{response.error}</div>
+            ) : isUnsupported ? (
+              <div className="assistant-content unsupported">{response.content}</div>
             ) : (
               <>
                 <ThinkingSection
@@ -109,7 +209,6 @@ const Message = memo(forwardRef(({ message, response, model, index }, ref) => {
                   isStreaming={isStreaming}
                   hasContent={hasContent}
                 />
-                {/* Show content area only when we have content or finished streaming */}
                 {(hasContent || !isStreaming) && (
                   <motion.div
                     className="assistant-content"
@@ -122,9 +221,19 @@ const Message = memo(forwardRef(({ message, response, model, index }, ref) => {
                     </Suspense>
                   </motion.div>
                 )}
-                {/* Show generating status while streaming content */}
                 {isStreaming && hasContent && (
                   <GeneratingStatus />
+                )}
+                {!isStreaming && hasContent && (
+                  <div className="message-actions">
+                    <CopyButton content={response.content} />
+                    <RegenerateButton 
+                      modelKey={modelKey} 
+                      model={model} 
+                      index={index}
+                      disabled={isGenerating}
+                    />
+                  </div>
                 )}
               </>
             )}
