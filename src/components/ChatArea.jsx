@@ -25,7 +25,7 @@ const WelcomeScreen = memo(() => (
   </motion.div>
 ))
 
-const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, width, onResizeStart, isLast }, ref) => {
+const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, width, onResizeStart }, ref) => {
   const contentRef = useRef(null)
   const isUserScrolledUp = useRef(false)
   const lastScrollTop = useRef(0)
@@ -92,12 +92,10 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
           )
         ))}
       </div>
-      {!isLast && (
-        <div 
-          className="column-resize-handle"
-          onMouseDown={(e) => onResizeStart(e, modelKey)}
-        />
-      )}
+      <div 
+        className="column-resize-handle"
+        onMouseDown={(e) => onResizeStart(e, modelKey)}
+      />
     </motion.div>
   )
 }))
@@ -107,14 +105,14 @@ function ChatArea() {
   const chat = getCurrentChat()
   const hasMessages = chat?.messages?.length > 0
   
-  // Column widths state
   const [columnWidths, setColumnWidths] = useState({})
   const containerRef = useRef(null)
   const resizingRef = useRef(null)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
+  const nextColumnStartWidthRef = useRef(0)
+  const nextColumnKeyRef = useRef(null)
 
-  // Reset widths when active models change
   useEffect(() => {
     setColumnWidths({})
   }, [activeModels.length])
@@ -124,11 +122,19 @@ function ChatArea() {
     resizingRef.current = modelKey
     startXRef.current = e.clientX
     
-    // Get current width of the column
     const columnIndex = activeModels.indexOf(modelKey)
     const columns = containerRef.current?.querySelectorAll('.chat-column')
+    
     if (columns && columns[columnIndex]) {
       startWidthRef.current = columns[columnIndex].offsetWidth
+      
+      if (columnIndex < activeModels.length - 1) {
+        nextColumnKeyRef.current = activeModels[columnIndex + 1]
+        nextColumnStartWidthRef.current = columns[columnIndex + 1].offsetWidth
+      } else {
+        nextColumnKeyRef.current = null
+        nextColumnStartWidthRef.current = 0
+      }
     }
     
     document.addEventListener('mousemove', handleResizeMove)
@@ -141,16 +147,31 @@ function ChatArea() {
     if (!resizingRef.current) return
     
     const delta = e.clientX - startXRef.current
-    const newWidth = Math.max(200, startWidthRef.current + delta)
+    const minWidth = 300
     
-    setColumnWidths(prev => ({
-      ...prev,
-      [resizingRef.current]: newWidth
-    }))
+    const newWidth = Math.max(minWidth, startWidthRef.current + delta)
+    
+    if (nextColumnKeyRef.current && nextColumnStartWidthRef.current) {
+      const nextNewWidth = Math.max(minWidth, nextColumnStartWidthRef.current - delta)
+      
+      if (newWidth >= minWidth && nextNewWidth >= minWidth) {
+        setColumnWidths(prev => ({
+          ...prev,
+          [resizingRef.current]: newWidth,
+          [nextColumnKeyRef.current]: nextNewWidth
+        }))
+      }
+    } else {
+      setColumnWidths(prev => ({
+        ...prev,
+        [resizingRef.current]: newWidth
+      }))
+    }
   }, [])
 
   const handleResizeEnd = useCallback(() => {
     resizingRef.current = null
+    nextColumnKeyRef.current = null
     document.removeEventListener('mousemove', handleResizeMove)
     document.removeEventListener('mouseup', handleResizeEnd)
     document.body.style.cursor = ''
@@ -171,7 +192,7 @@ function ChatArea() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            {activeModels.map((modelKey, index) => {
+            {activeModels.map((modelKey) => {
               const model = models[modelKey]
               if (!model) return null
               return (
@@ -183,7 +204,6 @@ function ChatArea() {
                   responses={chat.responses}
                   width={columnWidths[modelKey]}
                   onResizeStart={handleResizeStart}
-                  isLast={index === activeModels.length - 1}
                 />
               )
             })}

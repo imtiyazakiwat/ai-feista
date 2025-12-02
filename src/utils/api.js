@@ -109,7 +109,10 @@ function buildConversationHistory(messages, responses, modelKey) {
   return history
 }
 
-async function streamResponse(modelKey, model, messages, responses, signal, onUpdate, useFallback = false) {
+const FALLBACK_TIMEOUT_MS = 10000 // 10 seconds timeout before retry/fallback
+
+// retryState: 0 = first try, 1 = retry same model, 2 = use fallback
+async function streamResponse(modelKey, model, messages, responses, signal, onUpdate, retryState = 0) {
   const history = buildConversationHistory(messages, responses, modelKey)
   
   // Ensure we have at least one user message
@@ -118,19 +121,44 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     return
   }
   
-  // Use fallback model if specified
-  const modelId = useFallback && model.fallbackId ? model.fallbackId : model.id
+  // Use fallback model only on retryState 2
+  const modelId = retryState === 2 && model.fallbackId ? model.fallbackId : model.id
+  const modelLabel = retryState === 2 ? 'fallback' : (retryState === 1 ? 'retry' : 'primary')
   
   let thinkingContent = ''
   let responseContent = ''
   let rawContent = ''
   let isThinking = true
-  let thinkingStartTime = null // Will be set when first thinking token arrives
-  let thinkingEndTime = null // Will be set when thinking ends (first content token)
-  let receivedContent = false // Track if we received any content
+  let thinkingStartTime = null
+  let thinkingEndTime = null
+  let receivedContent = false
+  let timeoutTriggered = false
+  let timeoutId = null
+
+  // Set up timeout (only on first try or retry, not on fallback)
+  if (retryState < 2) {
+    timeoutId = setTimeout(() => {
+      if (!receivedContent) {
+        timeoutTriggered = true
+        console.log(`[${modelKey}] ${modelLabel} timeout after ${FALLBACK_TIMEOUT_MS}ms`)
+      }
+    }, FALLBACK_TIMEOUT_MS)
+  }
 
   try {
     const response = await callApi(modelId, history, signal)
+    
+    // Check if timeout was triggered during the fetch
+    if (timeoutTriggered) {
+      if (timeoutId) clearTimeout(timeoutId)
+      if (retryState === 0) {
+        console.log(`[${modelKey}] Retrying same model...`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
+      } else if (retryState === 1 && model.fallbackId) {
+        console.log(`[${modelKey}] Switching to fallback: ${model.fallbackId}`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -159,6 +187,7 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
             // Handle reasoning_content field
             if (delta?.reasoning_content) {
               receivedContent = true
+              if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
               // Start timer on first thinking token
               if (!thinkingStartTime) {
                 thinkingStartTime = Date.now()
@@ -174,12 +203,13 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
             // Handle content
             if (delta?.content) {
               receivedContent = true
+              if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
               // Parse Claude's <think> tags
               if (modelKey === 'claude') {
                 rawContent += delta.content
 
+                // Case 1: Inside <think> tags (thinking in progress)
                 if (rawContent.includes('<think>') && !rawContent.includes('</think>')) {
-                  // Start timer on first thinking token for Claude
                   if (!thinkingStartTime) {
                     thinkingStartTime = Date.now()
                   }
@@ -191,7 +221,9 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
                     isStreaming: true
                   })
                   continue
-                } else if (rawContent.includes('</think>')) {
+                } 
+                // Case 2: After </think> tags (thinking complete)
+                else if (rawContent.includes('</think>')) {
                   const thinkStart = rawContent.indexOf('<think>') + 7
                   const thinkEnd = rawContent.indexOf('</think>')
                   thinkingContent = rawContent.substring(thinkStart, thinkEnd).trim()
@@ -213,7 +245,17 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
                   })
                   continue
                 }
-                continue
+                // Case 3: No <think> tags at all - treat as regular content
+                else {
+                  responseContent = rawContent
+                  onUpdate(modelKey, {
+                    thinking: null,
+                    thinkingTime: null,
+                    content: responseContent,
+                    isStreaming: true
+                  })
+                  continue
+                }
               }
 
               // For other models - record end time when first content arrives
@@ -245,15 +287,23 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
       }
     }
 
+    // Clear timeout
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+    
     // Final update - use recorded end time if available
     const thinkingTime = thinkingContent && thinkingStartTime
       ? `${Math.round(((thinkingEndTime || Date.now()) - thinkingStartTime) / 1000)}s` 
       : null
 
-    // If no content received and fallback available, try fallback
-    if (!receivedContent && !useFallback && model.fallbackId) {
-      console.log(`[${modelKey}] No content received, trying fallback: ${model.fallbackId}`)
-      return streamResponse(modelKey, model, messages, responses, signal, onUpdate, true)
+    // If no content received, try retry then fallback
+    if (!receivedContent) {
+      if (retryState === 0) {
+        console.log(`[${modelKey}] No content received, retrying same model...`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
+      } else if (retryState === 1 && model.fallbackId) {
+        console.log(`[${modelKey}] Retry failed, trying fallback: ${model.fallbackId}`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
+      }
     }
 
     onUpdate(modelKey, {
@@ -264,6 +314,9 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     })
 
   } catch (error) {
+    // Clear timeout on error
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+    
     if (error.name === 'AbortError') {
       onUpdate(modelKey, {
         thinking: thinkingContent || null,
@@ -272,10 +325,13 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
         stopped: true
       })
     } else {
-      // If error and fallback available, try fallback
-      if (!useFallback && model.fallbackId) {
-        console.log(`[${modelKey}] Error occurred, trying fallback: ${model.fallbackId}`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, true)
+      // On error: retry same model first, then try fallback
+      if (retryState === 0) {
+        console.log(`[${modelKey}] Error occurred, retrying same model...`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
+      } else if (retryState === 1 && model.fallbackId) {
+        console.log(`[${modelKey}] Retry failed, trying fallback: ${model.fallbackId}`)
+        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
       }
       
       console.error(`[${modelKey}] Error:`, error)
@@ -297,19 +353,29 @@ export async function sendToAllModels({ activeModels, models, messages, response
   await Promise.allSettled(promises)
 }
 
-export async function generateChatTitle(messages) {
+export async function generateChatTitle(messages, currentTitle = null) {
   const userMessages = messages.filter(m => m.role === 'user')
   if (userMessages.length === 0) return null
 
-  const greetings = ['hi', 'hello', 'hey', 'hola', 'howdy', 'greetings']
+  const greetings = ['hi', 'hello', 'hey', 'hola', 'howdy', 'greetings', 'hii', 'hiii', 'yo', 'sup']
   const firstMsg = userMessages[0].content.toLowerCase().trim().replace(/[!.,?]/g, '')
-  const isGreeting = greetings.some(g => firstMsg === g || firstMsg.startsWith(g + ' '))
+  const isFirstGreeting = greetings.some(g => firstMsg === g || firstMsg.startsWith(g + ' '))
 
-  if (isGreeting && userMessages.length === 1) {
+  // If first message is greeting and only one message, return temporary title
+  if (isFirstGreeting && userMessages.length === 1) {
     return 'New Conversation'
   }
 
-  const messageForTitle = isGreeting && userMessages.length >= 2 
+  // If current title is "New Conversation" and we now have 2+ messages, regenerate
+  const shouldRegenerate = currentTitle === 'New Conversation' && userMessages.length >= 2
+
+  // Skip if we already have a proper title and don't need to regenerate
+  if (currentTitle && currentTitle !== 'New Conversation' && !shouldRegenerate) {
+    return currentTitle
+  }
+
+  // Use second message if first was greeting, otherwise use first
+  const messageForTitle = isFirstGreeting && userMessages.length >= 2 
     ? userMessages[1].content 
     : userMessages[0].content
 

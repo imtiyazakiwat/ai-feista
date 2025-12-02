@@ -9,8 +9,6 @@ function InputArea() {
     activeModels,
     models,
     isGenerating,
-    chats,
-    currentChatId,
     getCurrentChat,
     createChat,
     addMessage,
@@ -56,12 +54,18 @@ function InputArea() {
     setGenerating(false)
     setAbortControllers([])
 
-    // Generate title if needed
+    // Generate or update title if needed
     const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
-    if (finalChat && !finalChat.title && finalChat.messages.length >= 1) {
-      const title = await generateChatTitle(finalChat.messages)
-      if (title) {
-        updateChatTitle(finalChat.id, title)
+    if (finalChat && finalChat.messages.length >= 1) {
+      // Generate title if no title, or regenerate if it's "New Conversation" and we have 2+ messages
+      const needsTitle = !finalChat.title || 
+        (finalChat.title === 'New Conversation' && finalChat.messages.length >= 2)
+      
+      if (needsTitle) {
+        const title = await generateChatTitle(finalChat.messages, finalChat.title)
+        if (title && title !== finalChat.title) {
+          updateChatTitle(finalChat.id, title)
+        }
       }
     }
   }, [message, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers])

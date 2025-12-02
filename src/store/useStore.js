@@ -8,7 +8,7 @@ const MODELS = {
     icon: '/img/ChatGPT-Logo.png',
     color: '#10a37f',
     darkLogo: true,
-    fallbackId: null
+    fallbackId: 'openrouter:openai/gpt-4.1'
   },
   claude: {
     id: 'openrouter:anthropic/claude-opus-4.5',
@@ -16,7 +16,7 @@ const MODELS = {
     icon: '/img/claude%20ai%20logo%20Background%20Removed.png',
     color: '#D97757',
     darkLogo: false,
-    fallbackId: null
+    fallbackId: 'openrouter:anthropic/claude-sonnet-4'
   },
   gemini: {
     id: 'openrouter:google/gemini-3-pro-preview',
@@ -32,7 +32,7 @@ const MODELS = {
     icon: '/img/perplexity%20Background%20Removed.png',
     color: '#20B8CD',
     darkLogo: false,
-    fallbackId: null
+    fallbackId: 'openrouter:perplexity/sonar-pro'
   },
   grok: {
     id: 'x-ai/grok-4.1-fast:free',
@@ -40,7 +40,7 @@ const MODELS = {
     icon: '/img/grok%20logo%20Background%20Removed.png',
     color: '#ffffff',
     darkLogo: true,
-    fallbackId: null
+    fallbackId: 'openrouter:x-ai/grok-3-fast'
   },
   deepseek: {
     id: 'openrouter:deepseek/deepseek-v3.2',
@@ -60,6 +60,7 @@ const useStore = create(
       // State
       theme: 'dark',
       activeModels: ['chatgpt', 'claude', 'gemini', 'perplexity', 'grok', 'deepseek'],
+      sidebarOpen: false,
       chats: [],
       currentChatId: null,
       isGenerating: false,
@@ -90,6 +91,18 @@ const useStore = create(
           set({ activeModels: [...activeModels, modelKey] })
         }
         return true
+      },
+
+      reorderModels: (newOrder) => {
+        set({ activeModels: newOrder })
+      },
+
+      toggleSidebar: () => {
+        set(state => ({ sidebarOpen: !state.sidebarOpen }))
+      },
+
+      closeSidebar: () => {
+        set({ sidebarOpen: false })
       },
 
       createChat: () => {
