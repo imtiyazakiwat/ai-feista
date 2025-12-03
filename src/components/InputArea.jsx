@@ -2,6 +2,7 @@ import { memo, useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
 import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT } from '../utils/api'
+import { runCouncil } from '../utils/councilApi'
 
 function InputArea() {
   const [message, setMessage] = useState('')
@@ -25,7 +26,10 @@ function InputArea() {
     updateChatTitle,
     setGenerating,
     setAbortControllers,
-    stopGenerating
+    stopGenerating,
+    councilMode,
+    toggleCouncilMode,
+    updateCouncilResponse
   } = useStore()
 
   // Keyboard shortcuts
@@ -122,6 +126,7 @@ function InputArea() {
     const currentFiles = [...files]
     const currentThinkingMode = thinkingMode
     const currentImageGenMode = imageGenMode
+    const currentCouncilMode = councilMode
     setMessage('')
     setImages([])
     setFiles([])
@@ -139,27 +144,71 @@ function InputArea() {
       images: currentImages.length > 0 ? currentImages : undefined,
       files: currentFiles.length > 0 ? currentFiles : undefined,
       thinkingMode: currentThinkingMode,
-      imageGenMode: currentImageGenMode
+      imageGenMode: currentImageGenMode,
+      councilMode: currentCouncilMode
     })
 
     const updatedChat = useStore.getState().chats.find(c => c.id === chat.id)
-    
-    const controllers = activeModels.map(() => new AbortController())
-    setAbortControllers(controllers)
 
-    await sendToAllModels({
-      activeModels,
-      models,
-      messages: updatedChat.messages,
-      responses: updatedChat.responses || {},
-      controllers,
-      onUpdate: (modelKey, response) => {
-        updateResponse(modelKey, msgIndex, response)
-      }
-    })
+    // Council mode - run the 3-stage council process
+    if (currentCouncilMode) {
+      // Initialize council response with loading state
+      updateCouncilResponse(msgIndex, {
+        loading: { stage1: true, stage2: false, stage3: false },
+        stage1: null,
+        stage2: null,
+        stage3: null,
+        metadata: null
+      })
 
-    setGenerating(false)
-    setAbortControllers([])
+      await runCouncil(text, (progress) => {
+        const currentData = useStore.getState().chats.find(c => c.id === chat.id)?.councilResponses?.[msgIndex] || {}
+        
+        if (progress.status === 'start') {
+          updateCouncilResponse(msgIndex, {
+            ...currentData,
+            loading: {
+              ...currentData.loading,
+              [`stage${progress.stage}`]: true
+            }
+          })
+        } else if (progress.status === 'complete') {
+          const newData = {
+            ...currentData,
+            loading: {
+              ...currentData.loading,
+              [`stage${progress.stage}`]: false,
+              [`stage${progress.stage + 1}`]: progress.stage < 3
+            },
+            [`stage${progress.stage}`]: progress.data
+          }
+          if (progress.metadata) {
+            newData.metadata = { ...currentData.metadata, ...progress.metadata }
+          }
+          updateCouncilResponse(msgIndex, newData)
+        }
+      })
+
+      setGenerating(false)
+    } else {
+      // Normal mode - send to all models
+      const controllers = activeModels.map(() => new AbortController())
+      setAbortControllers(controllers)
+
+      await sendToAllModels({
+        activeModels,
+        models,
+        messages: updatedChat.messages,
+        responses: updatedChat.responses || {},
+        controllers,
+        onUpdate: (modelKey, response) => {
+          updateResponse(modelKey, msgIndex, response)
+        }
+      })
+
+      setGenerating(false)
+      setAbortControllers([])
+    }
 
     const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
     if (finalChat && finalChat.messages.length >= 1) {
@@ -173,7 +222,7 @@ function InputArea() {
         }
       }
     }
-  }, [message, images, files, thinkingMode, imageGenMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers])
+  }, [message, images, files, thinkingMode, imageGenMode, councilMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -323,11 +372,27 @@ function InputArea() {
         />
         <div className="input-actions">
           <motion.button
+            className={`mode-btn council-btn ${councilMode ? 'active' : ''}`}
+            onClick={toggleCouncilMode}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title="Council mode (BETA) - Get consensus from multiple LLMs"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            {councilMode && <span className="beta-dot" />}
+          </motion.button>
+          <motion.button
             className={`mode-btn ${thinkingMode ? 'active' : ''}`}
             onClick={() => setThinkingMode(!thinkingMode)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             title="Thinking mode - Enable deep reasoning"
+            disabled={councilMode}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
@@ -340,6 +405,7 @@ function InputArea() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             title="Image generation mode"
+            disabled={councilMode}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>

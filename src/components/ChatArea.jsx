@@ -2,6 +2,7 @@ import { memo, useRef, useEffect, forwardRef, useCallback, useState } from 'reac
 import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
 import Message from './Message'
+import { CouncilResponse } from './council'
 
 const WelcomeScreen = memo(() => (
   <motion.div
@@ -102,10 +103,54 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
   )
 }))
 
+// Council chat view - single column with council responses
+const CouncilChatView = memo(({ messages, councilResponses }) => {
+  const contentRef = useRef(null)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    }
+  }, [messages, councilResponses])
+
+  return (
+    <div className="council-chat-view">
+      <div className="council-chat-header">
+        <span className="council-chat-icon">🏛️</span>
+        <span className="council-chat-title">LLM Council</span>
+        <span className="council-beta-tag">BETA</span>
+      </div>
+      <div className="council-chat-content" ref={contentRef}>
+        {messages.map((msg, idx) => (
+          msg.role === 'user' && (
+            <div key={idx} className="council-message-group">
+              <div className="council-user-message">
+                <div className="user-avatar">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <div className="user-message-content">{msg.content}</div>
+              </div>
+              {(msg.councilMode && councilResponses?.[idx]) && (
+                <CouncilResponse councilData={councilResponses[idx]} />
+              )}
+            </div>
+          )
+        ))}
+      </div>
+    </div>
+  )
+})
+
 function ChatArea() {
-  const { models, activeModels, getCurrentChat } = useStore()
+  const { models, activeModels, getCurrentChat, councilMode } = useStore()
   const chat = getCurrentChat()
   const hasMessages = chat?.messages?.length > 0
+  
+  // Check if any message in the chat used council mode
+  const hasCouncilMessages = chat?.messages?.some(m => m.councilMode)
   
   const [columnWidths, setColumnWidths] = useState({})
   const containerRef = useRef(null)
@@ -180,11 +225,27 @@ function ChatArea() {
     document.body.style.userSelect = ''
   }, [handleResizeMove])
 
+  // Determine which view to show
+  const showCouncilView = hasCouncilMessages || councilMode
+
   return (
     <div className="chat-columns-container">
       <AnimatePresence mode="wait">
         {!hasMessages ? (
           <WelcomeScreen key="welcome" />
+        ) : showCouncilView ? (
+          <motion.div
+            key="council"
+            className="chat-columns council-mode"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <CouncilChatView 
+              messages={chat.messages} 
+              councilResponses={chat.councilResponses}
+            />
+          </motion.div>
         ) : (
           <motion.div
             key="chat"

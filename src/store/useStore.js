@@ -79,6 +79,7 @@ const useStore = create(
       abortControllers: [],
       searchQuery: '',
       editingChatId: null,
+      councilMode: false, // LLM Council beta feature
 
       // Getters
       models: MODELS,
@@ -228,6 +229,27 @@ const useStore = create(
             chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
           }
         })
+      },
+
+      // Council mode
+      toggleCouncilMode: () => set(state => ({ councilMode: !state.councilMode })),
+      
+      setCouncilMode: (enabled) => set({ councilMode: enabled }),
+
+      updateCouncilResponse: (msgIndex, councilData) => {
+        set(state => {
+          const chat = state.chats.find(c => c.id === state.currentChatId)
+          if (!chat) return state
+          
+          const councilResponses = { ...(chat.councilResponses || {}) }
+          councilResponses[msgIndex] = councilData
+          
+          const updatedChat = { ...chat, councilResponses, updatedAt: Date.now() }
+          
+          return {
+            chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
+          }
+        })
       }
     }),
     {
@@ -235,6 +257,7 @@ const useStore = create(
       partialize: (state) => ({
         theme: state.theme,
         activeModels: state.activeModels,
+        councilMode: state.councilMode,
         // Strip file data from chats before persisting to avoid localStorage quota
         chats: state.chats.map(chat => ({
           ...chat,

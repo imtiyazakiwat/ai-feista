@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import useStore from '../store/useStore'
 
 function ModelTabs() {
-  const { models, activeModels, toggleModel, reorderModels, toggleSidebar } = useStore()
+  const { models, activeModels, toggleModel, reorderModels, toggleSidebar, councilMode } = useStore()
   const [draggedIndex, setDraggedIndex] = useState(null)
   const [dropIndex, setDropIndex] = useState(null)
   const draggedRef = useRef(null)
@@ -74,6 +74,13 @@ function ModelTabs() {
         </svg>
       </button>
 
+      {councilMode ? (
+        <div className="council-mode-header">
+          <span className="council-mode-icon">🏛️</span>
+          <span className="council-mode-text">LLM Council Mode</span>
+          <span className="council-mode-badge">BETA</span>
+        </div>
+      ) : (
       <div className="model-tabs">
         {activeModels.map((key, index) => {
           const model = models[key]
@@ -140,6 +147,7 @@ function ModelTabs() {
           )
         })}
       </div>
+      )}
     </header>
   )
 }

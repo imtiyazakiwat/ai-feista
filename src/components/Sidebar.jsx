@@ -194,7 +194,7 @@ function Sidebar() {
         <div className="chat-history">
           <AnimatePresence mode="popLayout">
             {groupedChats.today.length > 0 && (
-              <div className="history-section">
+              <div key="section-today" className="history-section">
                 <div className="history-title">Today</div>
                 {groupedChats.today.map(chat => (
                   <ChatItem
@@ -212,7 +212,7 @@ function Sidebar() {
             )}
             
             {groupedChats.yesterday.length > 0 && (
-              <div className="history-section">
+              <div key="section-yesterday" className="history-section">
                 <div className="history-title">Yesterday</div>
                 {groupedChats.yesterday.map(chat => (
                   <ChatItem
@@ -230,7 +230,7 @@ function Sidebar() {
             )}
             
             {groupedChats.older.length > 0 && (
-              <div className="history-section">
+              <div key="section-older" className="history-section">
                 <div className="history-title">Previous</div>
                 {groupedChats.older.map(chat => (
                   <ChatItem
