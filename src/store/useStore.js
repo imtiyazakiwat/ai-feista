@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware'
 const MODELS = {
   chatgpt: {
     id: 'openrouter:openai/gpt-5.1',
+    thinkingId: 'openrouter:openai/gpt-5.1', // Same model for thinking
     name: 'ChatGPT',
     icon: '/img/ChatGPT-Logo.png',
     color: '#10a37f',
@@ -13,6 +14,7 @@ const MODELS = {
   },
   claude: {
     id: 'openrouter:anthropic/claude-opus-4.5',
+    thinkingId: 'openrouter:anthropic/claude-opus-4.5', // Same model for thinking
     name: 'Claude',
     icon: '/img/claude%20ai%20logo%20Background%20Removed.png',
     color: '#D97757',
@@ -21,7 +23,8 @@ const MODELS = {
     supportsVision: true
   },
   gemini: {
-    id: 'openrouter:google/gemini-3-pro-preview',
+    id: 'openrouter:google/gemini-2.5-pro',
+    thinkingId: 'openrouter:google/gemini-3-pro-preview', // Different for thinking
     name: 'Gemini',
     icon: '/img/gemini%20Background%20Removed.png',
     color: '#4285f4',
@@ -31,6 +34,7 @@ const MODELS = {
   },
   perplexity: {
     id: 'openrouter:perplexity/sonar-pro-search',
+    thinkingId: 'openrouter:perplexity/sonar-reasoning', // Different for thinking - exposes reasoning_content
     name: 'Perplexity',
     icon: '/img/perplexity%20Background%20Removed.png',
     color: '#20B8CD',
@@ -39,7 +43,8 @@ const MODELS = {
     supportsVision: true
   },
   grok: {
-    id: 'x-ai/grok-4.1-fast:free',
+    id: 'openrouter:x-ai/grok-4.1-fast:free',
+    thinkingId: 'openrouter:x-ai/grok-4', // Different for thinking
     name: 'Grok',
     icon: '/img/grok%20logo%20Background%20Removed.png',
     color: '#ffffff',
@@ -49,6 +54,7 @@ const MODELS = {
   },
   deepseek: {
     id: 'openrouter:deepseek/deepseek-v3.2',
+    thinkingId: 'openrouter:deepseek/deepseek-r1-0528', // Different for thinking (supports reasoning_content)
     name: 'DeepSeek',
     icon: '/img/deepseek%20logo%20Background%20Removed.png',
     color: '#4D6BFE',
@@ -229,7 +235,19 @@ const useStore = create(
       partialize: (state) => ({
         theme: state.theme,
         activeModels: state.activeModels,
-        chats: state.chats,
+        // Strip file data from chats before persisting to avoid localStorage quota
+        chats: state.chats.map(chat => ({
+          ...chat,
+          messages: chat.messages.map(msg => ({
+            ...msg,
+            // Keep file metadata but remove large data
+            files: msg.files?.map(f => ({
+              type: f.type,
+              name: f.name,
+              // Don't persist base64 data or content
+            }))
+          }))
+        })),
         currentChatId: state.currentChatId
       })
     }

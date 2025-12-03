@@ -89,6 +89,7 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
               model={model}
               modelKey={modelKey}
               index={idx}
+              isLatestMessage={idx === messages.length - 1}
             />
           )
         ))}

@@ -1,3 +1,4 @@
+
 import { memo, useState, Suspense, lazy, forwardRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import useStore from '../store/useStore'
@@ -155,13 +156,82 @@ const ImagePreview = memo(({ images }) => {
   )
 })
 
-const Message = memo(forwardRef(({ message, response, model, index, modelKey }, ref) => {
+const FilePreview = memo(({ files }) => {
+  if (!files || files.length === 0) return null
+  
+  const getFileIcon = (type) => {
+    switch (type) {
+      case 'pdf': return '📄'
+      case 'csv': return '📊'
+      case 'text': return '📝'
+      default: return '📎'
+    }
+  }
+  
+  return (
+    <div className="message-files">
+      {files.map((file, idx) => (
+        <div key={idx} className="message-file">
+          <span className="file-icon">{getFileIcon(file.type)}</span>
+          <span className="file-name">{file.name}</span>
+        </div>
+      ))}
+    </div>
+  )
+})
+
+const Message = memo(forwardRef(({ message, response, model, index, modelKey, isLatestMessage }, ref) => {
   const { isGenerating } = useStore()
-  const isLoading = !response
+  // Only show loading if currently generating AND this is the latest message AND no response yet
+  const isLoading = !response && isGenerating && isLatestMessage
+  // Show "no response" for past messages that have no response (model was off)
+  const noResponse = !response && (!isGenerating || !isLatestMessage)
   const hasError = response?.error
   const isStreaming = response?.isStreaming
   const hasContent = response?.content && response.content.length > 0
   const isUnsupported = response?.unsupported
+  const isThinkingModeEnabled = message?.thinkingMode
+  
+  // Early return for no response case to prevent accessing undefined response
+  if (noResponse) {
+    return (
+      <motion.div
+        ref={ref}
+        className="message"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: Math.min(index * 0.05, 0.3) }}
+      >
+        <div className="message-user">
+          <div className="user-avatar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+          </div>
+          <div className="user-message-content">
+            {message.content}
+            <ImagePreview images={message.images} />
+            <FilePreview files={message.files} />
+          </div>
+        </div>
+        <div className="message-assistant">
+          <div className="assistant-response">
+            <img
+              src={model.icon}
+              alt={model.name}
+              className={`assistant-icon ${model.darkLogo ? 'dark-logo' : ''}`}
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+            <div className="assistant-content-wrapper">
+              <div className="assistant-content unsupported">
+                Model was not active for this message.
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
@@ -180,6 +250,7 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey }, 
         <div className="user-message-content">
           {message.content}
           <ImagePreview images={message.images} />
+          <FilePreview files={message.files} />
         </div>
       </div>
 
@@ -203,12 +274,14 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey }, 
               <div className="assistant-content unsupported">{response.content}</div>
             ) : (
               <>
-                <ThinkingSection
-                  thinking={response.thinking}
-                  thinkingTime={response.thinkingTime}
-                  isStreaming={isStreaming}
-                  hasContent={hasContent}
-                />
+                {isThinkingModeEnabled && (
+                  <ThinkingSection
+                    thinking={response.thinking}
+                    thinkingTime={response.thinkingTime}
+                    isStreaming={isStreaming}
+                    hasContent={hasContent}
+                  />
+                )}
                 {(hasContent || !isStreaming) && (
                   <motion.div
                     className="assistant-content"

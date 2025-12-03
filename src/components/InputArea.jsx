@@ -1,13 +1,17 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
-import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt } from '../utils/api'
+import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT } from '../utils/api'
 
 function InputArea() {
   const [message, setMessage] = useState('')
   const [images, setImages] = useState([])
+  const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [enhancing, setEnhancing] = useState(false)
+  const [thinkingMode, setThinkingMode] = useState(false)
+  const [imageGenMode, setImageGenMode] = useState(false)
+  const imageInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const inputRef = useRef(null)
   const {
@@ -27,18 +31,14 @@ function InputArea() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl/Cmd + K = Focus search (handled in Sidebar)
-      // Ctrl/Cmd + N = New chat
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault()
         createChat()
       }
-      // Ctrl/Cmd + / = Focus input
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault()
         inputRef.current?.focus()
       }
-      // Escape = Stop generating
       if (e.key === 'Escape' && isGenerating) {
         stopGenerating()
       }
@@ -47,12 +47,12 @@ function InputArea() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [createChat, isGenerating, stopGenerating])
 
-  const handleImageUpload = useCallback(async (files) => {
-    if (!files || files.length === 0) return
+  const handleImageUpload = useCallback(async (fileList) => {
+    if (!fileList || fileList.length === 0) return
     
     setUploading(true)
     try {
-      const uploadPromises = Array.from(files).slice(0, 4).map(file => uploadImage(file))
+      const uploadPromises = Array.from(fileList).slice(0, 4).map(file => uploadImage(file))
       const urls = await Promise.all(uploadPromises)
       setImages(prev => [...prev, ...urls].slice(0, 4))
     } catch (error) {
@@ -63,10 +63,31 @@ function InputArea() {
     }
   }, [])
 
-  const handleFileChange = useCallback((e) => {
+  const handleFileUpload = useCallback(async (fileList) => {
+    if (!fileList || fileList.length === 0) return
+    
+    setUploading(true)
+    try {
+      const processPromises = Array.from(fileList).slice(0, 3).map(file => processFile(file))
+      const processed = await Promise.all(processPromises)
+      setFiles(prev => [...prev, ...processed].slice(0, 3))
+    } catch (error) {
+      console.error('File processing failed:', error)
+      alert(error.message || 'Failed to process file. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }, [])
+
+  const handleImageChange = useCallback((e) => {
     handleImageUpload(e.target.files)
     e.target.value = ''
   }, [handleImageUpload])
+
+  const handleFileChange = useCallback((e) => {
+    handleFileUpload(e.target.files)
+    e.target.value = ''
+  }, [handleFileUpload])
 
   const handlePaste = useCallback((e) => {
     const items = e.clipboardData?.items
@@ -89,13 +110,21 @@ function InputArea() {
     setImages(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  const handleSend = useCallback(async () => {
-    if ((!message.trim() && images.length === 0) || activeModels.length === 0) return
+  const removeFile = useCallback((index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+  }, [])
 
-    const text = message.trim() || 'What is in this image?'
+  const handleSend = useCallback(async () => {
+    if ((!message.trim() && images.length === 0 && files.length === 0) || activeModels.length === 0) return
+
+    const text = message.trim() || (images.length > 0 ? 'What is in this image?' : 'Analyze this file')
     const currentImages = [...images]
+    const currentFiles = [...files]
+    const currentThinkingMode = thinkingMode
+    const currentImageGenMode = imageGenMode
     setMessage('')
     setImages([])
+    setFiles([])
     setGenerating(true)
 
     let chat = getCurrentChat()
@@ -104,7 +133,14 @@ function InputArea() {
     }
 
     const msgIndex = chat.messages.length
-    addMessage({ role: 'user', content: text, images: currentImages.length > 0 ? currentImages : undefined })
+    addMessage({ 
+      role: 'user', 
+      content: text, 
+      images: currentImages.length > 0 ? currentImages : undefined,
+      files: currentFiles.length > 0 ? currentFiles : undefined,
+      thinkingMode: currentThinkingMode,
+      imageGenMode: currentImageGenMode
+    })
 
     const updatedChat = useStore.getState().chats.find(c => c.id === chat.id)
     
@@ -137,7 +173,7 @@ function InputArea() {
         }
       }
     }
-  }, [message, images, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers])
+  }, [message, images, files, thinkingMode, imageGenMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -148,7 +184,6 @@ function InputArea() {
         handleSend()
       }
     }
-    // Ctrl+E = Enhance prompt
     if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
       e.preventDefault()
       handleEnhance()
@@ -171,20 +206,44 @@ function InputArea() {
     }
   }, [message, enhancing])
 
+  const getFileIcon = (type) => {
+    switch (type) {
+      case 'pdf':
+        return '📄'
+      case 'csv':
+        return '📊'
+      case 'text':
+        return '📝'
+      default:
+        return '📎'
+    }
+  }
+
   return (
     <div className="input-area">
       <AnimatePresence>
-        {images.length > 0 && (
+        {(images.length > 0 || files.length > 0) && (
           <motion.div 
-            className="image-preview-container"
+            className="attachments-preview"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
             {images.map((url, idx) => (
-              <div key={idx} className="image-preview">
+              <div key={`img-${idx}`} className="image-preview">
                 <img src={url} alt={`Upload ${idx + 1}`} />
-                <button className="remove-image" onClick={() => removeImage(idx)}>
+                <button className="remove-attachment" onClick={() => removeImage(idx)}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+            {files.map((file, idx) => (
+              <div key={`file-${idx}`} className="file-preview">
+                <span className="file-icon">{getFileIcon(file.type)}</span>
+                <span className="file-name">{file.name}</span>
+                <button className="remove-attachment" onClick={() => removeFile(idx)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
                   </svg>
@@ -198,16 +257,24 @@ function InputArea() {
       <div className="input-container">
         <input
           type="file"
+          ref={imageInputRef}
+          onChange={handleImageChange}
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+        />
+        <input
+          type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept="image/*"
+          accept={FILE_ACCEPT}
           multiple
           style={{ display: 'none' }}
         />
         
         <motion.button
           className="attach-btn"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => imageInputRef.current?.click()}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           disabled={uploading}
@@ -225,12 +292,29 @@ function InputArea() {
             </svg>
           )}
         </motion.button>
+
+        <motion.button
+          className="attach-btn file-btn"
+          onClick={() => fileInputRef.current?.click()}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          disabled={uploading}
+          title="Attach file (PDF, TXT, CSV)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </motion.button>
         
         <input
           ref={inputRef}
           type="text"
           className="message-input"
-          placeholder="Ask me anything... (Ctrl+/ to focus)"
+          placeholder={imageGenMode ? "Describe the image you want to generate..." : "Ask me anything... (Ctrl+/ to focus)"}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -238,6 +322,32 @@ function InputArea() {
           autoComplete="off"
         />
         <div className="input-actions">
+          <motion.button
+            className={`mode-btn ${thinkingMode ? 'active' : ''}`}
+            onClick={() => setThinkingMode(!thinkingMode)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title="Thinking mode - Enable deep reasoning"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </motion.button>
+          <motion.button
+            className={`mode-btn ${imageGenMode ? 'active' : ''}`}
+            onClick={() => setImageGenMode(!imageGenMode)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title="Image generation mode"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+              <path d="M12 12l3-3"/>
+            </svg>
+          </motion.button>
           <motion.button
             className={`enhance-btn ${enhancing ? 'enhancing' : ''}`}
             onClick={handleEnhance}

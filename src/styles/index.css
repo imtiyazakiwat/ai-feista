@@ -766,14 +766,15 @@ body {
   border-top: 1px solid var(--border-color);
 }
 
-/* Image Preview */
-.image-preview-container {
+/* Attachments Preview */
+.attachments-preview {
   display: flex;
   gap: 8px;
   padding: 8px 16px;
   max-width: 800px;
   margin: 0 auto 8px;
   overflow-x: auto;
+  flex-wrap: wrap;
 }
 
 .image-preview {
@@ -792,24 +793,55 @@ body {
   object-fit: cover;
 }
 
-.remove-image {
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  position: relative;
+}
+
+.file-preview .file-icon {
+  font-size: 16px;
+}
+
+.file-preview .file-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.remove-attachment {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: -6px;
+  right: -6px;
   width: 18px;
   height: 18px;
-  background: rgba(0, 0, 0, 0.7);
-  border: none;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
   border-radius: 50%;
-  color: white;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.remove-image:hover {
+.remove-attachment:hover {
   background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: white;
+}
+
+/* File button */
+.file-btn {
+  margin-left: -4px;
 }
 
 /* Attach Button */
@@ -885,6 +917,67 @@ body {
   transform: scale(1.05);
 }
 
+/* Message Files */
+.message-files {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.message-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.message-file .file-icon {
+  font-size: 14px;
+}
+
+.message-file .file-name {
+  color: var(--text-secondary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Message Mode Badges */
+.message-modes {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.mode-badge.thinking {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.mode-badge.image-gen {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
 /* Copy Button */
 .message-actions {
   display: flex;
@@ -955,6 +1048,33 @@ body {
 
 .regenerate-btn .spinner {
   animation: spin 1s linear infinite;
+}
+
+/* Mode Buttons */
+.mode-btn {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.mode-btn:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.mode-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(74, 222, 128, 0.1);
 }
 
 /* Enhance Button */
