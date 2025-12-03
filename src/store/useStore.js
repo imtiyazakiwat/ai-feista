@@ -80,6 +80,8 @@ const useStore = create(
       searchQuery: '',
       editingChatId: null,
       councilMode: false, // LLM Council beta feature
+      imageGenMode: false, // Image generation mode
+      selectedImageModel: 'flux', // Selected image model
 
       // Getters
       models: MODELS,
@@ -232,9 +234,16 @@ const useStore = create(
       },
 
       // Council mode
-      toggleCouncilMode: () => set(state => ({ councilMode: !state.councilMode })),
+      toggleCouncilMode: () => set(state => ({ councilMode: !state.councilMode, imageGenMode: false })),
       
-      setCouncilMode: (enabled) => set({ councilMode: enabled }),
+      setCouncilMode: (enabled) => set({ councilMode: enabled, imageGenMode: false }),
+
+      // Image generation mode
+      toggleImageGenMode: () => set(state => ({ imageGenMode: !state.imageGenMode, councilMode: false })),
+      
+      setImageGenMode: (enabled) => set({ imageGenMode: enabled, councilMode: false }),
+      
+      setSelectedImageModel: (model) => set({ selectedImageModel: model }),
 
       updateCouncilResponse: (msgIndex, councilData) => {
         set(state => {
@@ -250,6 +259,22 @@ const useStore = create(
             chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
           }
         })
+      },
+
+      updateImageResponse: (msgIndex, imageData) => {
+        set(state => {
+          const chat = state.chats.find(c => c.id === state.currentChatId)
+          if (!chat) return state
+          
+          const imageResponses = { ...(chat.imageResponses || {}) }
+          imageResponses[msgIndex] = imageData
+          
+          const updatedChat = { ...chat, imageResponses, updatedAt: Date.now() }
+          
+          return {
+            chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
+          }
+        })
       }
     }),
     {
@@ -258,6 +283,8 @@ const useStore = create(
         theme: state.theme,
         activeModels: state.activeModels,
         councilMode: state.councilMode,
+        imageGenMode: state.imageGenMode,
+        selectedImageModel: state.selectedImageModel,
         // Strip file data from chats before persisting to avoid localStorage quota
         chats: state.chats.map(chat => ({
           ...chat,

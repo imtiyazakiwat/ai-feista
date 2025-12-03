@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
 import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT } from '../utils/api'
 import { runCouncil } from '../utils/councilApi'
+import { generateImage, parseGenerateCommand, IMAGE_MODELS } from '../utils/imageApi'
+// IMAGE_MODELS used for getting model name in loading state
 
 function InputArea() {
   const [message, setMessage] = useState('')
@@ -11,7 +13,6 @@ function InputArea() {
   const [uploading, setUploading] = useState(false)
   const [enhancing, setEnhancing] = useState(false)
   const [thinkingMode, setThinkingMode] = useState(false)
-  const [imageGenMode, setImageGenMode] = useState(false)
   const imageInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const inputRef = useRef(null)
@@ -29,7 +30,11 @@ function InputArea() {
     stopGenerating,
     councilMode,
     toggleCouncilMode,
-    updateCouncilResponse
+    imageGenMode,
+    toggleImageGenMode,
+    selectedImageModel,
+    updateCouncilResponse,
+    updateImageResponse
   } = useStore()
 
   // Keyboard shortcuts
@@ -122,6 +127,11 @@ function InputArea() {
     if ((!message.trim() && images.length === 0 && files.length === 0) || activeModels.length === 0) return
 
     const text = message.trim() || (images.length > 0 ? 'What is in this image?' : 'Analyze this file')
+    
+    // Check for /generate command OR imageGenMode is enabled
+    const generateCmd = parseGenerateCommand(text)
+    const shouldGenerateImage = generateCmd || imageGenMode
+    
     const currentImages = [...images]
     const currentFiles = [...files]
     const currentThinkingMode = thinkingMode
@@ -145,10 +155,65 @@ function InputArea() {
       files: currentFiles.length > 0 ? currentFiles : undefined,
       thinkingMode: currentThinkingMode,
       imageGenMode: currentImageGenMode,
-      councilMode: currentCouncilMode
+      councilMode: currentCouncilMode,
+      isImageGeneration: shouldGenerateImage
     })
 
     const updatedChat = useStore.getState().chats.find(c => c.id === chat.id)
+
+    // Image generation mode via /generate command OR imageGenMode toggle
+    if (shouldGenerateImage) {
+      // Get prompt and model - from command or use selected model
+      let imagePrompt = text
+      let imageModel = selectedImageModel // use selected model from dropdown
+      
+      if (generateCmd) {
+        if (generateCmd.error) {
+          updateImageResponse(msgIndex, {
+            error: generateCmd.error,
+            isGenerating: false
+          })
+          setGenerating(false)
+          return
+        }
+        imagePrompt = generateCmd.prompt
+        imageModel = generateCmd.model // command overrides selected model
+      }
+
+      // Initialize with loading state
+      updateImageResponse(msgIndex, {
+        isGenerating: true,
+        model: IMAGE_MODELS[imageModel]?.name || 'Unknown'
+      })
+
+      try {
+        const result = await generateImage(imagePrompt, imageModel)
+        updateImageResponse(msgIndex, {
+          imageData: result.base64 ? `data:${result.mimeType};base64,${result.base64}` : null,
+          imageUrl: result.imageUrl,
+          revisedPrompt: result.revisedPrompt,
+          model: result.model,
+          isGenerating: false
+        })
+      } catch (error) {
+        updateImageResponse(msgIndex, {
+          error: error.message || 'Image generation failed',
+          isGenerating: false
+        })
+      }
+
+      setGenerating(false)
+      
+      // Generate title
+      const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
+      if (finalChat && !finalChat.title) {
+        const title = await generateChatTitle(finalChat.messages, finalChat.title)
+        if (title) {
+          updateChatTitle(finalChat.id, title)
+        }
+      }
+      return
+    }
 
     // Council mode - run the 3-stage council process
     if (currentCouncilMode) {
@@ -222,7 +287,7 @@ function InputArea() {
         }
       }
     }
-  }, [message, images, files, thinkingMode, imageGenMode, councilMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
+  }, [message, images, files, thinkingMode, imageGenMode, selectedImageModel, councilMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -401,7 +466,7 @@ function InputArea() {
           </motion.button>
           <motion.button
             className={`mode-btn ${imageGenMode ? 'active' : ''}`}
-            onClick={() => setImageGenMode(!imageGenMode)}
+            onClick={toggleImageGenMode}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             title="Image generation mode"

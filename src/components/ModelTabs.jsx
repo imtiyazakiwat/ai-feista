@@ -1,9 +1,10 @@
 import { memo, useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import useStore from '../store/useStore'
+import { IMAGE_MODELS } from '../utils/imageApi'
 
 function ModelTabs() {
-  const { models, activeModels, toggleModel, reorderModels, toggleSidebar, councilMode } = useStore()
+  const { models, activeModels, toggleModel, reorderModels, toggleSidebar, councilMode, imageGenMode, selectedImageModel, setSelectedImageModel } = useStore()
   const [draggedIndex, setDraggedIndex] = useState(null)
   const [dropIndex, setDropIndex] = useState(null)
   const draggedRef = useRef(null)
@@ -79,6 +80,27 @@ function ModelTabs() {
           <span className="council-mode-icon">🏛️</span>
           <span className="council-mode-text">LLM Council Mode</span>
           <span className="council-mode-badge">BETA</span>
+        </div>
+      ) : imageGenMode ? (
+        <div className="model-tabs">
+          <div className="image-gen-mode-indicator">
+            <span className="image-gen-mode-icon">🎨</span>
+            <span className="image-gen-mode-text">Image Generation</span>
+          </div>
+          {Object.entries(IMAGE_MODELS).map(([key, model]) => (
+            <div
+              key={key}
+              className={`model-tab ${selectedImageModel === key ? 'active' : 'inactive'}`}
+              onClick={() => setSelectedImageModel(key)}
+            >
+              <span className="model-tab-emoji">{model.icon}</span>
+              <span className="model-tab-name">{model.name}</span>
+              <motion.div
+                className={`toggle-switch ${selectedImageModel === key ? 'active' : ''}`}
+                whileTap={{ scale: 0.95 }}
+              />
+            </div>
+          ))}
         </div>
       ) : (
       <div className="model-tabs">

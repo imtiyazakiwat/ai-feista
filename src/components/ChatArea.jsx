@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
 import Message from './Message'
 import { CouncilResponse } from './council'
+import ImageGenResponse from './ImageGenResponse'
 
 const WelcomeScreen = memo(() => (
   <motion.div
@@ -144,6 +145,37 @@ const CouncilChatView = memo(({ messages, councilResponses }) => {
   )
 })
 
+// Image generation chat view
+const ImageGenChatView = memo(({ messages, imageResponses }) => {
+  const contentRef = useRef(null)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    }
+  }, [messages, imageResponses])
+
+  return (
+    <div className="image-gen-chat-view">
+      <div className="image-gen-chat-header">
+        <span className="image-gen-chat-icon">🎨</span>
+        <span className="image-gen-chat-title">Image Generation</span>
+      </div>
+      <div className="image-gen-chat-content" ref={contentRef}>
+        {messages.map((msg, idx) => (
+          msg.role === 'user' && msg.isImageGeneration && (
+            <ImageGenResponse 
+              key={idx}
+              message={msg}
+              imageData={imageResponses?.[idx]}
+            />
+          )
+        ))}
+      </div>
+    </div>
+  )
+})
+
 function ChatArea() {
   const { models, activeModels, getCurrentChat, councilMode } = useStore()
   const chat = getCurrentChat()
@@ -151,6 +183,9 @@ function ChatArea() {
   
   // Check if any message in the chat used council mode
   const hasCouncilMessages = chat?.messages?.some(m => m.councilMode)
+  
+  // Check if any message in the chat is image generation
+  const hasImageGenMessages = chat?.messages?.some(m => m.isImageGeneration)
   
   const [columnWidths, setColumnWidths] = useState({})
   const containerRef = useRef(null)
@@ -227,12 +262,26 @@ function ChatArea() {
 
   // Determine which view to show
   const showCouncilView = hasCouncilMessages || councilMode
+  const showImageGenView = hasImageGenMessages && !showCouncilView
 
   return (
     <div className="chat-columns-container">
       <AnimatePresence mode="wait">
         {!hasMessages ? (
           <WelcomeScreen key="welcome" />
+        ) : showImageGenView ? (
+          <motion.div
+            key="imagegen"
+            className="chat-columns image-gen-mode"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <ImageGenChatView 
+              messages={chat.messages} 
+              imageResponses={chat.imageResponses}
+            />
+          </motion.div>
         ) : showCouncilView ? (
           <motion.div
             key="council"
