@@ -7,6 +7,8 @@ import ImageGenResponse from './ImageGenResponse'
 import InputArea from './InputArea'
 import ModelDropdown from './ModelDropdown'
 
+
+
 // Explore Avatars Data
 const EXPLORE_AVATARS = [
   {
@@ -38,10 +40,54 @@ const EXPLORE_AVATARS = [
   }
 ]
 
-const WelcomeScreen = memo(({ councilMode, toggleCouncilMode }) => {
+const WelcomeModelTabs = memo(({ models, activeModels, toggleModel, theme }) => {
+  const allModelKeys = Object.keys(models)
+  
+  return (
+    <div className="welcome-model-tabs">
+      {allModelKeys.map(key => {
+        const model = models[key]
+        if (!model) return null
+        const isActive = activeModels.includes(key)
+        const iconSrc = theme === 'dark' && model.iconDark ? model.iconDark : model.icon
+        
+        return (
+          <div key={key} className={`welcome-model-tab ${isActive ? 'active' : 'inactive'}`}>
+            <img
+              src={iconSrc}
+              alt={model.name}
+              className={`welcome-model-icon ${model.darkLogo ? 'dark-logo' : ''}`}
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+            <span className="welcome-model-name">{model.name}</span>
+            <button className="welcome-model-external" title="Open in new tab">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+              </svg>
+            </button>
+            <div 
+              className={`welcome-model-toggle ${isActive ? 'active' : ''}`}
+              onClick={() => toggleModel(key)}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+})
+
+const WelcomeScreen = memo(({ councilMode, toggleCouncilMode, models, activeModels, toggleModel, theme }) => {
   return (
     <div className="welcome-screen">
       <div className="dotted-grid-bg"></div>
+      
+      {/* Model Tabs at top - like real AI Fiesta */}
+      <WelcomeModelTabs 
+        models={models} 
+        activeModels={activeModels} 
+        toggleModel={toggleModel}
+        theme={theme}
+      />
       
       <div className="welcome-content">
         {/* Mode Toggle Pills */}
@@ -265,7 +311,7 @@ const ImageGenChatView = memo(({ messages, imageResponses }) => {
 })
 
 function ChatArea() {
-  const { models, activeModels, toggleModel, getCurrentChat, councilMode, toggleCouncilMode } = useStore()
+  const { models, activeModels, toggleModel, getCurrentChat, councilMode, toggleCouncilMode, theme } = useStore()
   const chat = getCurrentChat()
   const hasMessages = chat?.messages?.length > 0
   const hasCouncilMessages = chat?.messages?.some(m => m.councilMode)
@@ -347,6 +393,10 @@ function ChatArea() {
             key="welcome" 
             councilMode={councilMode}
             toggleCouncilMode={toggleCouncilMode}
+            models={models}
+            activeModels={activeModels}
+            toggleModel={toggleModel}
+            theme={theme}
           />
         ) : showImageGenView ? (
           <motion.div

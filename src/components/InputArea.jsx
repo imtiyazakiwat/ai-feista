@@ -1,7 +1,7 @@
 import { memo, useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useStore from '../store/useStore'
-import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT } from '../utils/api'
+import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT, sendToAllModelsWithSearch } from '../utils/api'
 import { runCouncil } from '../utils/councilApi'
 import { generateImage, parseGenerateCommand, IMAGE_MODELS } from '../utils/imageApi'
 
@@ -11,7 +11,6 @@ function InputArea() {
   const [files, setFiles] = useState([])
   const [enhancing, setEnhancing] = useState(false)
   const [showPlusMenu, setShowPlusMenu] = useState(false)
-  const [webSearchMode, setWebSearchMode] = useState(false)
   const imageInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const inputRef = useRef(null)
@@ -37,6 +36,9 @@ function InputArea() {
     updateImageResponse,
     thinkingMode,
     toggleThinkingMode,
+    webSearchMode,
+    toggleWebSearchMode,
+    updateWebSearchResponse,
     getModelId
   } = useStore()
 
@@ -174,6 +176,7 @@ function InputArea() {
     const currentImageGenMode = imageGenMode
     const currentCouncilMode = councilMode
     const currentThinkingMode = thinkingMode
+    const currentWebSearchMode = webSearchMode
     setMessage('')
     setImages([])
     setFiles([])
@@ -194,7 +197,7 @@ function InputArea() {
       councilMode: currentCouncilMode,
       thinkingMode: currentThinkingMode,
       isImageGeneration: shouldGenerateImage,
-      webSearch: webSearchMode
+      webSearch: currentWebSearchMode
     })
 
     const updatedChat = useStore.getState().chats.find(c => c.id === chat.id)
@@ -298,17 +301,54 @@ function InputArea() {
       const controllers = activeModels.map(() => new AbortController())
       setAbortControllers(controllers)
 
-      await sendToAllModels({
-        activeModels,
-        models,
-        messages: updatedChat.messages,
-        responses: updatedChat.responses || {},
-        controllers,
-        onUpdate: (modelKey, response) => {
-          updateResponse(modelKey, msgIndex, response)
-        },
-        getModelId
-      })
+      if (currentWebSearchMode) {
+        // Web search mode: search first, then pass results to all models
+        updateWebSearchResponse(msgIndex, {
+          isSearching: true,
+          searchRound: 1,
+          searches: []
+        })
+
+        await sendToAllModelsWithSearch({
+          activeModels,
+          models,
+          messages: updatedChat.messages,
+          responses: updatedChat.responses || {},
+          controllers,
+          onUpdate: (modelKey, response) => {
+            updateResponse(modelKey, msgIndex, response)
+          },
+          onSearchProgress: (progress) => {
+            updateWebSearchResponse(msgIndex, {
+              isSearching: progress.status === 'searching',
+              searchRound: progress.round,
+              currentQuery: progress.query,
+              status: progress.message || progress.status
+            })
+          },
+          onSearchComplete: (searchData) => {
+            updateWebSearchResponse(msgIndex, {
+              isSearching: false,
+              totalSearches: searchData.totalSearches,
+              searchResults: searchData.searchResults,
+              complete: true
+            })
+          },
+          getModelId
+        })
+      } else {
+        await sendToAllModels({
+          activeModels,
+          models,
+          messages: updatedChat.messages,
+          responses: updatedChat.responses || {},
+          controllers,
+          onUpdate: (modelKey, response) => {
+            updateResponse(modelKey, msgIndex, response)
+          },
+          getModelId
+        })
+      }
 
       setGenerating(false)
       setAbortControllers([])
@@ -487,13 +527,13 @@ function InputArea() {
                   </svg>
                   <span>Document</span>
                 </button>
-                <button className="plus-menu-item" onClick={() => { setWebSearchMode(true); setShowPlusMenu(false) }}>
+                <button className={`plus-menu-item ${webSearchMode ? 'active' : ''}`} onClick={() => { toggleWebSearchMode(); setShowPlusMenu(false) }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <circle cx="12" cy="12" r="10"/>
                     <line x1="2" y1="12" x2="22" y2="12"/>
                     <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
                   </svg>
-                  <span>Web Search</span>
+                  <span>Web Search {webSearchMode ? '✓' : ''}</span>
                 </button>
                 <button className="plus-menu-item has-arrow" onClick={() => setShowPlusMenu(false)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -510,11 +550,27 @@ function InputArea() {
           </AnimatePresence>
         </div>
         
+        {/* Search Toggle Button - like real AI Fiesta */}
+        <motion.button
+          className={`search-toggle-btn ${webSearchMode ? 'active' : ''}`}
+          onClick={toggleWebSearchMode}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          title={webSearchMode ? 'Disable web search' : 'Enable web search'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+          </svg>
+          <span>Search</span>
+        </motion.button>
+        
         <input
           ref={inputRef}
           type="text"
           className="message-input"
-          placeholder={imageGenMode ? "Describe the image you want to generate..." : thinkingMode ? "Ask a complex question (thinking enabled)..." : "Ask me anything..."}
+          placeholder={imageGenMode ? "Describe the image you want to generate..." : webSearchMode ? "Search the web and get AI-powered answers..." : thinkingMode ? "Ask a complex question (thinking enabled)..." : "Ask me anything..."}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -572,7 +628,7 @@ function InputArea() {
           </button>
           <button 
             className={`quick-action-btn ${webSearchMode ? 'active' : ''}`}
-            onClick={() => setWebSearchMode(!webSearchMode)}
+            onClick={toggleWebSearchMode}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/>

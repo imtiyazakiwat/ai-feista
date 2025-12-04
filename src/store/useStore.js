@@ -111,7 +111,7 @@ const MODELS = {
     color: '#6366f1',
     darkLogo: false,
     supportsVision: true,
-    defaultVariant: 'openrouter:moonshotai/kimi-k2',
+    defaultVariant: 'openrouter:moonshotai/kimi-k2-0905',
     variants: MODEL_VARIANTS.kimi
   }
 }
@@ -143,6 +143,7 @@ const useStore = create(
       imageGenMode: false,
       selectedImageModel: 'flux',
       thinkingMode: false,
+      webSearchMode: false,
 
       // Getters
       models: MODELS,
@@ -351,6 +352,8 @@ const useStore = create(
       setSelectedImageModel: (model) => set({ selectedImageModel: model }),
       toggleThinkingMode: () => set(state => ({ thinkingMode: !state.thinkingMode })),
       setThinkingMode: (enabled) => set({ thinkingMode: enabled }),
+      toggleWebSearchMode: () => set(state => ({ webSearchMode: !state.webSearchMode })),
+      setWebSearchMode: (enabled) => set({ webSearchMode: enabled }),
 
       updateCouncilResponse: (msgIndex, councilData) => {
         set(state => {
@@ -382,6 +385,22 @@ const useStore = create(
             chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
           }
         })
+      },
+
+      updateWebSearchResponse: (msgIndex, searchData) => {
+        set(state => {
+          const chat = state.chats.find(c => c.id === state.currentChatId)
+          if (!chat) return state
+          
+          const webSearchResponses = { ...(chat.webSearchResponses || {}) }
+          webSearchResponses[msgIndex] = searchData
+          
+          const updatedChat = { ...chat, webSearchResponses, updatedAt: Date.now() }
+          
+          return {
+            chats: state.chats.map(c => c.id === chat.id ? updatedChat : c)
+          }
+        })
       }
     }),
     {
@@ -394,6 +413,7 @@ const useStore = create(
         imageGenMode: state.imageGenMode,
         selectedImageModel: state.selectedImageModel,
         thinkingMode: state.thinkingMode,
+        webSearchMode: state.webSearchMode,
         chats: state.chats.map(chat => ({
           ...chat,
           messages: chat.messages.map(msg => ({

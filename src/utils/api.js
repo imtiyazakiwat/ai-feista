@@ -307,14 +307,16 @@ Original prompt: "${prompt}"`
 
 const FALLBACK_TIMEOUT_MS = 15000 // 15 seconds timeout before retry/fallback
 const FILE_TIMEOUT_MS = 60000 // 60 seconds for file uploads
+const WEB_SEARCH_TIMEOUT_MS = 45000 // 45 seconds for web search mode (longer context)
 
 // retryState: 0 = first try, 1 = retry same model, 2 = use fallback
 // showGrokWarning: boolean to show warning for Grok (doesn't expose reasoning)
 async function streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, retryState = 0, showGrokWarning = false) {
-  // Check if message has files - use longer timeout
+  // Check if message has files or web search - use longer timeout
   const lastMsg = messages[messages.length - 1]
   const hasFiles = lastMsg?.files && lastMsg.files.length > 0
-  const timeoutMs = hasFiles ? FILE_TIMEOUT_MS : FALLBACK_TIMEOUT_MS
+  const hasWebSearch = lastMsg?.hasWebSearch || lastMsg?.webSearch
+  const timeoutMs = hasFiles ? FILE_TIMEOUT_MS : hasWebSearch ? WEB_SEARCH_TIMEOUT_MS : FALLBACK_TIMEOUT_MS
   
   // Check if thinking mode is enabled
   const isThinkingMode = lastMsg?.thinkingMode
@@ -581,6 +583,218 @@ export async function sendToAllModels({ activeModels, models, messages, response
   })
 
   await Promise.allSettled(promises)
+}
+
+// Web search enhanced version - searches first, then passes context to all models
+export async function sendToAllModelsWithSearch({ 
+  activeModels, 
+  models, 
+  messages, 
+  responses, 
+  controllers, 
+  onUpdate, 
+  onSearchProgress,
+  onSearchComplete,
+  getModelId 
+}) {
+  const lastMessage = messages[messages.length - 1]
+  const hasImages = lastMessage?.images && lastMessage.images.length > 0
+  const isThinkingMode = lastMessage?.thinkingMode
+  const userQuery = lastMessage?.content || ''
+
+  // Step 1: Perform web search using Perplexity Sonar Pro Search
+  onSearchProgress?.({ status: 'searching', round: 1, message: 'Searching the web...' })
+  
+  let searchContext = ''
+  let allSearchResults = []
+  
+  try {
+    // Initial search
+    const searchResult = await performWebSearchInternal(userQuery, controllers[0]?.signal)
+    
+    if (searchResult.success) {
+      allSearchResults.push(searchResult)
+      
+      // Check if AI wants follow-up searches (step-by-step research)
+      onSearchProgress?.({ status: 'analyzing', round: 1, message: 'Analyzing results...' })
+      
+      const followUpQueries = await checkForFollowUpSearchInternal(searchResult.content, userQuery)
+      
+      if (followUpQueries && followUpQueries.length > 0) {
+        onSearchProgress?.({ status: 'searching', round: 2, message: `Performing ${followUpQueries.length} follow-up searches...` })
+        
+        // Perform follow-up searches
+        const followUpPromises = followUpQueries.map(q => 
+          performWebSearchInternal(q, controllers[0]?.signal)
+        )
+        const followUpResults = await Promise.all(followUpPromises)
+        allSearchResults.push(...followUpResults.filter(r => r.success))
+      }
+      
+      // Build search context for AI models
+      searchContext = buildSearchContextInternal(allSearchResults)
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      console.error('Web search failed:', error)
+    }
+  }
+  
+  onSearchComplete?.({
+    totalSearches: allSearchResults.length,
+    searchResults: allSearchResults,
+    context: searchContext
+  })
+
+  // Step 2: Create modified messages with search context
+  const messagesWithSearch = [...messages]
+  if (searchContext && messagesWithSearch.length > 0) {
+    const lastIdx = messagesWithSearch.length - 1
+    messagesWithSearch[lastIdx] = {
+      ...messagesWithSearch[lastIdx],
+      content: messagesWithSearch[lastIdx].content + searchContext,
+      hasWebSearch: true,
+      searchResults: allSearchResults
+    }
+  }
+
+  // Step 3: Send to all models with search context
+  const promises = activeModels.map((modelKey, idx) => {
+    const model = models[modelKey]
+    if (!model) return Promise.resolve()
+    
+    if (hasImages && !model.supportsVision) {
+      onUpdate(modelKey, {
+        content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
+        isStreaming: false,
+        unsupported: true
+      })
+      return Promise.resolve()
+    }
+    
+    const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
+    
+    return streamResponse(modelKey, model, modelId, messagesWithSearch, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok')
+  })
+
+  await Promise.allSettled(promises)
+}
+
+// Internal web search function using Perplexity Sonar Pro Search
+async function performWebSearchInternal(query, signal) {
+  try {
+    const response = await fetch(DIRECT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'openrouter:perplexity/sonar-pro-search',
+        messages: [{
+          role: 'system',
+          content: `You are a web search assistant. Search the internet for the most relevant and up-to-date information. Provide a comprehensive summary with key facts and cite your sources with URLs.`
+        }, {
+          role: 'user',
+          content: query
+        }],
+        stream: false
+      }),
+      signal
+    })
+
+    if (!response.ok) {
+      throw new Error(`Search failed: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const searchResult = data.choices?.[0]?.message?.content || ''
+    
+    return {
+      success: true,
+      content: searchResult,
+      query: query
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return { success: false, error: 'Search cancelled' }
+    }
+    return { success: false, error: error.message }
+  }
+}
+
+// Check if AI wants follow-up searches
+async function checkForFollowUpSearchInternal(aiResponse, originalQuery) {
+  try {
+    const response = await fetch(DIRECT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'openrouter:google/gemini-2.5-flash-lite',
+        messages: [{
+          role: 'user',
+          content: `Analyze this search result and determine if additional searches would help answer the original question better.
+
+Original question: "${originalQuery}"
+
+Search result:
+${aiResponse.substring(0, 3000)}
+
+If more specific searches would help, respond with a JSON array of 1-2 search queries. If the information is sufficient, respond with [].
+
+ONLY respond with a valid JSON array, nothing else. Example: ["specific query 1", "specific query 2"]`
+        }],
+        stream: false
+      })
+    })
+
+    if (!response.ok) return null
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content?.trim() || '[]'
+    
+    try {
+      // Extract JSON array from response
+      const match = content.match(/\[.*\]/s)
+      if (match) {
+        const queries = JSON.parse(match[0])
+        if (Array.isArray(queries) && queries.length > 0) {
+          return queries.slice(0, 2)
+        }
+      }
+    } catch {
+      return null
+    }
+    
+    return null
+  } catch {
+    return null
+  }
+}
+
+// Build context from search results - keep it concise and clear
+function buildSearchContextInternal(searchResults) {
+  if (!searchResults || searchResults.length === 0) return ''
+  
+  // Keep context concise to avoid overwhelming models (especially Kimi)
+  let context = '\n\n---\nWEB SEARCH RESULTS (live data):\n\n'
+  
+  searchResults.forEach((result, idx) => {
+    if (result.success) {
+      // Truncate to avoid context length issues
+      const content = result.content.length > 2000 
+        ? result.content.substring(0, 2000) + '...' 
+        : result.content
+      context += `${content}\n\n`
+    }
+  })
+  
+  context += '---\nUse the search results above to answer. This is current information.'
+  
+  return context
 }
 
 export async function regenerateSingleModel({ modelKey, model, modelId, messages, responses, onUpdate }) {

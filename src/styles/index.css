@@ -1844,3 +1844,243 @@ body {
   .nav-section-add { opacity: 1; }
   .image-actions { opacity: 1; }
 }
+
+
+/* ==================== WEB SEARCH ==================== */
+
+/* Quick action button active state for web search */
+.quick-action-btn.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.quick-action-btn.active svg {
+  stroke: white;
+}
+
+/* Plus menu active state */
+.plus-menu-item.active {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.plus-menu-item.active svg {
+  stroke: #3b82f6;
+}
+
+
+/* ==================== WELCOME MODEL TABS ==================== */
+.welcome-model-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 16px;
+  background: var(--bg-main);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}
+
+.welcome-model-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-right: 1px solid var(--border-color);
+  min-width: fit-content;
+  transition: all 0.2s;
+}
+
+.welcome-model-tab:last-child {
+  border-right: none;
+}
+
+.welcome-model-tab.inactive {
+  opacity: 0.5;
+}
+
+.welcome-model-tab.inactive .welcome-model-name {
+  color: var(--text-muted);
+}
+
+.welcome-model-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.welcome-model-icon.dark-logo {
+  filter: var(--logo-filter, none);
+}
+
+[data-theme="dark"] .welcome-model-icon.dark-logo {
+  filter: invert(1) brightness(2);
+}
+
+.welcome-model-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.welcome-model-external {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-model-tab:hover .welcome-model-external {
+  opacity: 1;
+}
+
+.welcome-model-external:hover {
+  color: var(--text-primary);
+}
+
+.welcome-model-toggle {
+  width: 36px;
+  height: 20px;
+  background: var(--border-color);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.welcome-model-toggle::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.welcome-model-toggle.active {
+  background: var(--accent);
+}
+
+.welcome-model-toggle.active::after {
+  left: 18px;
+}
+
+/* Adjust welcome screen to account for model tabs */
+.welcome-screen {
+  padding-top: 60px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .welcome-model-tabs {
+    padding: 6px 8px;
+  }
+  
+  .welcome-model-tab {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  
+  .welcome-model-icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .welcome-model-name {
+    font-size: 11px;
+  }
+  
+  .welcome-model-toggle {
+    width: 32px;
+    height: 18px;
+  }
+  
+  .welcome-model-toggle::after {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .welcome-model-toggle.active::after {
+    left: 16px;
+  }
+}
+
+
+/* Column-level search indicator */
+.column-search-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin: 8px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+}
+
+.column-search-indicator .search-globe {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+
+/* Search toggle button in input area */
+.search-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.search-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.search-toggle-btn.active {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.search-toggle-btn.active svg {
+  stroke: #3b82f6;
+}
