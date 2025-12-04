@@ -60,7 +60,7 @@ const CopyButton = memo(({ content }) => {
 
 const RegenerateButton = memo(({ modelKey, model, index, disabled }) => {
   const [regenerating, setRegenerating] = useState(false)
-  const { getCurrentChat, updateResponse, clearResponse, models } = useStore()
+  const { getCurrentChat, updateResponse, clearResponse, models, getModelId } = useStore()
 
   const handleRegenerate = useCallback(async () => {
     if (regenerating || disabled) return
@@ -75,6 +75,7 @@ const RegenerateButton = memo(({ modelKey, model, index, disabled }) => {
       await regenerateSingleModel({
         modelKey,
         model: models[modelKey],
+        modelId: getModelId(modelKey),
         messages: chat.messages,
         responses: chat.responses || {},
         onUpdate: (key, response) => {
@@ -84,7 +85,7 @@ const RegenerateButton = memo(({ modelKey, model, index, disabled }) => {
     } finally {
       setRegenerating(false)
     }
-  }, [modelKey, model, index, regenerating, disabled, getCurrentChat, updateResponse, clearResponse, models])
+  }, [modelKey, model, index, regenerating, disabled, getCurrentChat, updateResponse, clearResponse, models, getModelId])
 
   return (
     <button 
@@ -104,6 +105,33 @@ const RegenerateButton = memo(({ modelKey, model, index, disabled }) => {
         </svg>
       )}
     </button>
+  )
+})
+
+const FeedbackButtons = memo(() => {
+  const [feedback, setFeedback] = useState(null)
+
+  return (
+    <>
+      <button 
+        className={`feedback-btn ${feedback === 'like' ? 'liked' : ''}`}
+        onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+        title="Good response"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={feedback === 'like' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+        </svg>
+      </button>
+      <button 
+        className={`feedback-btn ${feedback === 'dislike' ? 'disliked' : ''}`}
+        onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+        title="Bad response"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={feedback === 'dislike' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+        </svg>
+      </button>
+    </>
   )
 })
 
@@ -181,7 +209,7 @@ const FilePreview = memo(({ files }) => {
 })
 
 const Message = memo(forwardRef(({ message, response, model, index, modelKey, isLatestMessage }, ref) => {
-  const { isGenerating } = useStore()
+  const { isGenerating, theme } = useStore()
   // Only show loading if currently generating AND this is the latest message AND no response yet
   const isLoading = !response && isGenerating && isLatestMessage
   // Show "no response" for past messages that have no response (model was off)
@@ -191,6 +219,9 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey, is
   const hasContent = response?.content && response.content.length > 0
   const isUnsupported = response?.unsupported
   const isThinkingModeEnabled = message?.thinkingMode
+  
+  // Get theme-aware icon
+  const iconSrc = theme === 'dark' && model.iconDark ? model.iconDark : model.icon
   
   // Early return for no response case to prevent accessing undefined response
   if (noResponse) {
@@ -217,7 +248,7 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey, is
         <div className="message-assistant">
           <div className="assistant-response">
             <img
-              src={model.icon}
+              src={iconSrc}
               alt={model.name}
               className={`assistant-icon ${model.darkLogo ? 'dark-logo' : ''}`}
               onError={(e) => { e.target.style.display = 'none' }}
@@ -257,7 +288,7 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey, is
       <div className="message-assistant">
         <div className="assistant-response">
           <img
-            src={model.icon}
+            src={iconSrc}
             alt={model.name}
             className={`assistant-icon ${model.darkLogo ? 'dark-logo' : ''}`}
             onError={(e) => { e.target.style.display = 'none' }}
@@ -274,7 +305,7 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey, is
               <div className="assistant-content unsupported">{response.content}</div>
             ) : (
               <>
-                {isThinkingModeEnabled && (
+                {(isThinkingModeEnabled || response.thinking) && (
                   <ThinkingSection
                     thinking={response.thinking}
                     thinkingTime={response.thinkingTime}
@@ -300,6 +331,7 @@ const Message = memo(forwardRef(({ message, response, model, index, modelKey, is
                 {!isStreaming && hasContent && (
                   <div className="message-actions">
                     <CopyButton content={response.content} />
+                    <FeedbackButtons />
                     <RegenerateButton 
                       modelKey={modelKey} 
                       model={model} 

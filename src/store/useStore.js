@@ -1,91 +1,189 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// Model variants for each provider (all free)
+const MODEL_VARIANTS = {
+  chatgpt: [
+    { id: 'openrouter:openai/gpt-5-mini', name: 'GPT-5 mini', supportsThinking: false },
+    { id: 'openrouter:openai/gpt-5-nano', name: 'GPT-5 nano', supportsThinking: false },
+    { id: 'openrouter:openai/gpt-4.1-nano', name: 'GPT-4.1 nano', supportsThinking: false },
+    { id: 'openrouter:openai/gpt-4o-mini', name: 'GPT-4o mini', supportsThinking: false },
+    { id: 'openrouter:openai/gpt-5.1', name: 'GPT-5.1', supportsThinking: true },
+    { id: 'openrouter:openai/gpt-5', name: 'GPT-5', supportsThinking: true },
+  ],
+  gemini: [
+    { id: 'openrouter:google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', supportsThinking: false },
+    { id: 'openrouter:google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Lite', supportsThinking: false },
+    { id: 'openrouter:google/gemini-3-pro-preview', name: 'Gemini 3 Pro', supportsThinking: true },
+    { id: 'openrouter:google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', supportsThinking: true },
+  ],
+  deepseek: [
+    { id: 'openrouter:deepseek/deepseek-chat-v3-0324', name: 'DeepSeek Chat v3.2', supportsThinking: false },
+    { id: 'openrouter:deepseek/deepseek-r1', name: 'DeepSeek Reasoner R1', supportsThinking: true },
+  ],
+  claude: [
+    { id: 'openrouter:anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', supportsThinking: true },
+    { id: 'openrouter:anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', supportsThinking: true },
+    { id: 'openrouter:anthropic/claude-opus-4.5', name: 'Claude Opus 4.5', supportsThinking: true },
+  ],
+  perplexity: [
+    { id: 'openrouter:perplexity/sonar', name: 'Sonar', supportsThinking: false },
+    { id: 'openrouter:perplexity/sonar-pro', name: 'Sonar Pro', supportsThinking: false },
+    { id: 'openrouter:perplexity/sonar-pro-search', name: 'Sonar Pro Search', supportsThinking: false },
+    { id: 'openrouter:perplexity/sonar-deep-research', name: 'Sonar Deep Research', supportsThinking: true },
+    { id: 'openrouter:perplexity/sonar-reasoning', name: 'Sonar Reasoning', supportsThinking: true },
+    { id: 'openrouter:perplexity/sonar-reasoning-pro', name: 'Sonar Reasoning Pro', supportsThinking: true },
+  ],
+  grok: [
+    { id: 'openrouter:x-ai/grok-3-mini', name: 'Grok 3 Mini', supportsThinking: false },
+    { id: 'openrouter:x-ai/grok-3', name: 'Grok 3', supportsThinking: false },
+    { id: 'openrouter:x-ai/grok-4-fast', name: 'Grok 4 Fast', supportsThinking: false },
+    { id: 'openrouter:x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast', supportsThinking: false },
+    { id: 'openrouter:x-ai/grok-4', name: 'Grok 4', supportsThinking: true },
+  ],
+  kimi: [
+    { id: 'openrouter:moonshotai/kimi-k2', name: 'Kimi K2', supportsThinking: false },
+    { id: 'openrouter:moonshotai/kimi-k2-0905', name: 'Kimi K2 0905', supportsThinking: false },
+    { id: 'openrouter:moonshotai/kimi-k2-thinking', name: 'Kimi K2 Thinking', supportsThinking: true },
+  ]
+}
+
+// Base model configurations
 const MODELS = {
   chatgpt: {
-    id: 'openrouter:openai/gpt-5.1',
-    thinkingId: 'openrouter:openai/gpt-5.1', // Same model for thinking
-    name: 'ChatGPT',
+    name: 'GPT-5 mini',
     icon: '/img/ChatGPT-Logo.png',
     color: '#10a37f',
     darkLogo: true,
-    fallbackId: 'openrouter:openai/gpt-4.1',
-    supportsVision: true
+    supportsVision: true,
+    defaultVariant: 'openrouter:openai/gpt-5-mini',
+    variants: MODEL_VARIANTS.chatgpt
+  },
+  gemini: {
+    name: 'Gemini 2.5 Lite',
+    icon: '/img/gemini%20Background%20Removed.png',
+    color: '#4285f4',
+    darkLogo: false,
+    supportsVision: true,
+    defaultVariant: 'openrouter:google/gemini-2.5-flash-lite',
+    variants: MODEL_VARIANTS.gemini
+  },
+  deepseek: {
+    name: 'DeepSeek Chat',
+    icon: '/img/deepseek%20logo%20Background%20Removed.png',
+    color: '#4D6BFE',
+    darkLogo: false,
+    supportsVision: false,
+    defaultVariant: 'openrouter:deepseek/deepseek-chat-v3-0324',
+    variants: MODEL_VARIANTS.deepseek
   },
   claude: {
-    id: 'openrouter:anthropic/claude-opus-4.5',
-    thinkingId: 'openrouter:anthropic/claude-opus-4.5', // Same model for thinking
     name: 'Claude',
     icon: '/img/claude%20ai%20logo%20Background%20Removed.png',
     color: '#D97757',
     darkLogo: false,
-    fallbackId: 'openrouter:anthropic/claude-sonnet-4',
-    supportsVision: true
-  },
-  gemini: {
-    id: 'openrouter:google/gemini-2.5-pro',
-    thinkingId: 'openrouter:google/gemini-3-pro-preview', // Different for thinking
-    name: 'Gemini',
-    icon: '/img/gemini%20Background%20Removed.png',
-    color: '#4285f4',
-    darkLogo: false,
-    fallbackId: 'openrouter:google/gemini-2.5-pro',
-    supportsVision: true
+    supportsVision: true,
+    defaultVariant: 'openrouter:anthropic/claude-sonnet-4.5',
+    variants: MODEL_VARIANTS.claude
   },
   perplexity: {
-    id: 'openrouter:perplexity/sonar-pro-search',
-    thinkingId: 'openrouter:perplexity/sonar-reasoning', // Different for thinking - exposes reasoning_content
     name: 'Perplexity',
     icon: '/img/perplexity%20Background%20Removed.png',
     color: '#20B8CD',
     darkLogo: false,
-    fallbackId: 'openrouter:perplexity/sonar-pro',
-    supportsVision: true
+    supportsVision: true,
+    defaultVariant: 'openrouter:perplexity/sonar-pro-search',
+    variants: MODEL_VARIANTS.perplexity
   },
   grok: {
-    id: 'openrouter:x-ai/grok-4.1-fast:free',
-    thinkingId: 'openrouter:x-ai/grok-4', // Different for thinking
     name: 'Grok',
     icon: '/img/grok%20logo%20Background%20Removed.png',
     color: '#ffffff',
     darkLogo: true,
-    fallbackId: 'openrouter:x-ai/grok-3-fast',
-    supportsVision: true
+    supportsVision: true,
+    defaultVariant: 'openrouter:x-ai/grok-4-fast',
+    variants: MODEL_VARIANTS.grok
   },
-  deepseek: {
-    id: 'openrouter:deepseek/deepseek-v3.2',
-    thinkingId: 'openrouter:deepseek/deepseek-r1-0528', // Different for thinking (supports reasoning_content)
-    name: 'DeepSeek',
-    icon: '/img/deepseek%20logo%20Background%20Removed.png',
-    color: '#4D6BFE',
+  kimi: {
+    name: 'Kimi',
+    icon: '/img/kimi%20Background%20Removed(white%20theme).png',
+    iconDark: '/img/images%20Background%20Removed(black%20theme).png',
+    color: '#6366f1',
     darkLogo: false,
-    fallbackId: 'openrouter:deepseek/deepseek-r1',
-    supportsVision: false
+    supportsVision: true,
+    defaultVariant: 'openrouter:moonshotai/kimi-k2',
+    variants: MODEL_VARIANTS.kimi
   }
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
+// Helper to get current model variant info
+const getVariantInfo = (modelKey, variantId, variants) => {
+  // variants is now a flat array
+  return variants.find(v => v.id === variantId) || variants[0]
+}
+
 const useStore = create(
   persist(
     (set, get) => ({
       // State
-      theme: 'dark',
-      activeModels: ['chatgpt', 'claude', 'gemini', 'perplexity', 'grok', 'deepseek'],
+      theme: 'light',
+      activeModels: ['chatgpt', 'gemini', 'deepseek', 'claude', 'perplexity', 'grok', 'kimi'],
+      selectedVariants: {}, // { chatgpt: 'openrouter:openai/gpt-5-mini', ... }
       sidebarOpen: false,
+      sidebarCollapsed: false,
       chats: [],
       currentChatId: null,
       isGenerating: false,
       abortControllers: [],
       searchQuery: '',
       editingChatId: null,
-      councilMode: false, // LLM Council beta feature
-      imageGenMode: false, // Image generation mode
-      selectedImageModel: 'flux', // Selected image model
+      councilMode: false,
+      imageGenMode: false,
+      selectedImageModel: 'flux',
+      thinkingMode: false,
 
       // Getters
       models: MODELS,
+      modelVariants: MODEL_VARIANTS,
       getCurrentChat: () => get().chats.find(c => c.id === get().currentChatId),
+      
+      // Get the actual model ID to use for API calls
+      getModelId: (modelKey) => {
+        const { selectedVariants, thinkingMode } = get()
+        const model = MODELS[modelKey]
+        if (!model) return null
+        
+        const selectedId = selectedVariants[modelKey] || model.defaultVariant
+        
+        // If thinking mode is enabled, check if selected variant supports thinking
+        if (thinkingMode) {
+          const selectedVariant = model.variants.find(v => v.id === selectedId)
+          // If selected variant supports thinking, use it
+          if (selectedVariant?.supportsThinking) {
+            return selectedId
+          }
+          // Otherwise, find first thinking-capable variant as fallback
+          const thinkingVariant = model.variants.find(v => v.supportsThinking)
+          if (thinkingVariant) {
+            return thinkingVariant.id
+          }
+        }
+        
+        return selectedId
+      },
+      
+      // Get display name for current variant
+      getVariantName: (modelKey) => {
+        const { selectedVariants } = get()
+        const model = MODELS[modelKey]
+        if (!model) return ''
+        
+        const selectedId = selectedVariants[modelKey] || model.defaultVariant
+        const variantInfo = getVariantInfo(modelKey, selectedId, model.variants)
+        return variantInfo?.name || model.name
+      },
 
       // Actions
       setTheme: (theme) => {
@@ -97,6 +195,15 @@ const useStore = create(
         const newTheme = get().theme === 'dark' ? 'light' : 'dark'
         document.documentElement.setAttribute('data-theme', newTheme)
         set({ theme: newTheme })
+      },
+
+      setSelectedVariant: (modelKey, variantId) => {
+        set(state => ({
+          selectedVariants: {
+            ...state.selectedVariants,
+            [modelKey]: variantId
+          }
+        }))
       },
 
       toggleModel: (modelKey) => {
@@ -120,6 +227,10 @@ const useStore = create(
 
       closeSidebar: () => {
         set({ sidebarOpen: false })
+      },
+
+      toggleSidebarCollapse: () => {
+        set(state => ({ sidebarCollapsed: !state.sidebarCollapsed }))
       },
 
       createChat: () => {
@@ -233,17 +344,13 @@ const useStore = create(
         })
       },
 
-      // Council mode
       toggleCouncilMode: () => set(state => ({ councilMode: !state.councilMode, imageGenMode: false })),
-      
       setCouncilMode: (enabled) => set({ councilMode: enabled, imageGenMode: false }),
-
-      // Image generation mode
       toggleImageGenMode: () => set(state => ({ imageGenMode: !state.imageGenMode, councilMode: false })),
-      
       setImageGenMode: (enabled) => set({ imageGenMode: enabled, councilMode: false }),
-      
       setSelectedImageModel: (model) => set({ selectedImageModel: model }),
+      toggleThinkingMode: () => set(state => ({ thinkingMode: !state.thinkingMode })),
+      setThinkingMode: (enabled) => set({ thinkingMode: enabled }),
 
       updateCouncilResponse: (msgIndex, councilData) => {
         set(state => {
@@ -282,24 +389,39 @@ const useStore = create(
       partialize: (state) => ({
         theme: state.theme,
         activeModels: state.activeModels,
+        selectedVariants: state.selectedVariants,
         councilMode: state.councilMode,
         imageGenMode: state.imageGenMode,
         selectedImageModel: state.selectedImageModel,
-        // Strip file data from chats before persisting to avoid localStorage quota
+        thinkingMode: state.thinkingMode,
         chats: state.chats.map(chat => ({
           ...chat,
           messages: chat.messages.map(msg => ({
             ...msg,
-            // Keep file metadata but remove large data
             files: msg.files?.map(f => ({
               type: f.type,
               name: f.name,
-              // Don't persist base64 data or content
             }))
           }))
         })),
         currentChatId: state.currentChatId
-      })
+      }),
+      merge: (persistedState, currentState) => {
+        const allModelKeys = Object.keys(MODELS)
+        let activeModels = persistedState?.activeModels || currentState.activeModels
+        allModelKeys.forEach(key => {
+          if (!activeModels.includes(key)) {
+            activeModels = [...activeModels, key]
+          }
+        })
+        activeModels = activeModels.filter(key => allModelKeys.includes(key))
+        
+        return {
+          ...currentState,
+          ...persistedState,
+          activeModels
+        }
+      }
     }
   )
 )

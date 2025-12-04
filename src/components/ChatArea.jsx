@@ -4,48 +4,119 @@ import useStore from '../store/useStore'
 import Message from './Message'
 import { CouncilResponse } from './council'
 import ImageGenResponse from './ImageGenResponse'
+import InputArea from './InputArea'
+import ModelDropdown from './ModelDropdown'
 
-const WelcomeScreen = memo(() => (
-  <motion.div
-    className="welcome-screen"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -20 }}
-    transition={{ duration: 0.3 }}
-  >
-    <div className="welcome-content">
-      <motion.div
-        className="welcome-icon"
-        animate={{ rotate: [0, 10, -10, 0] }}
-        transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-      >
-        🎉
-      </motion.div>
-      <h1>Welcome to AI Fiesta</h1>
-      <p>Compare responses from multiple AI models side by side</p>
+// Explore Avatars Data
+const EXPLORE_AVATARS = [
+  {
+    id: 'einstein',
+    name: 'Albert Einstein',
+    description: 'Revolutionized science, imagination beyond known limits.',
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Einstein_1921_by_F_Schmutzer_-_restoration.jpg/220px-Einstein_1921_by_F_Schmutzer_-_restoration.jpg'
+  },
+  {
+    id: 'career-coach',
+    name: 'Career Coach',
+    description: 'Assists in achieving career goals with guidance and planning.',
+    image: null,
+    emoji: '💼'
+  },
+  {
+    id: 'creative-writer',
+    name: 'Creative Writer',
+    description: 'Helps craft compelling stories and creative content.',
+    image: null,
+    emoji: '✍️'
+  },
+  {
+    id: 'code-mentor',
+    name: 'Code Mentor',
+    description: 'Expert programming guidance and code review.',
+    image: null,
+    emoji: '👨‍💻'
+  }
+]
+
+const WelcomeScreen = memo(({ councilMode, toggleCouncilMode }) => {
+  return (
+    <div className="welcome-screen">
+      <div className="dotted-grid-bg"></div>
+      
+      <div className="welcome-content">
+        {/* Mode Toggle Pills */}
+        <div className="mode-toggle-pills">
+          <button 
+            className={`mode-pill ${!councilMode ? 'active' : ''}`}
+            onClick={() => councilMode && toggleCouncilMode()}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            </svg>
+            <span>Multi-Chat</span>
+          </button>
+          <button 
+            className={`mode-pill super-fiesta ${councilMode ? 'active' : ''}`}
+            onClick={() => !councilMode && toggleCouncilMode()}
+          >
+            <span className="mode-pill-icon">🏛️</span>
+            <span>LLM Council</span>
+          </button>
+        </div>
+        
+        {/* Input Area - centered below mode toggle */}
+        <InputArea />
+      </div>
+      
+      {/* Explore Section - positioned at bottom */}
+      <div className="explore-section">
+        <div className="explore-header">
+          <h3>Explore</h3>
+          <button className="see-more-btn">
+            See more
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
+        <div className="explore-cards">
+          {EXPLORE_AVATARS.map(avatar => (
+            <div key={avatar.id} className="explore-card">
+              <div className="explore-avatar">
+                {avatar.image ? (
+                  <img src={avatar.image} alt={avatar.name} />
+                ) : (
+                  <span className="explore-avatar-emoji">{avatar.emoji}</span>
+                )}
+              </div>
+              <div className="explore-info">
+                <h4>{avatar.name}</h4>
+                <p>{avatar.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
-  </motion.div>
-))
+  )
+})
 
-const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, width, onResizeStart }, ref) => {
+const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, width, onResizeStart, isActive, onToggle }, ref) => {
   const contentRef = useRef(null)
   const isUserScrolledUp = useRef(false)
   const lastScrollTop = useRef(0)
+  const { theme } = useStore()
 
   const handleScroll = useCallback(() => {
     const el = contentRef.current
     if (!el) return
-    
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    
     if (el.scrollTop < lastScrollTop.current && !isAtBottom) {
       isUserScrolledUp.current = true
     }
-    
     if (isAtBottom) {
       isUserScrolledUp.current = false
     }
-    
     lastScrollTop.current = el.scrollTop
   }, [])
 
@@ -62,6 +133,15 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
     }
   }, [messages.length])
 
+  const handleExternalOpen = () => {
+    if (model.url) {
+      window.open(model.url, '_blank')
+    }
+  }
+
+  // Get theme-aware icon
+  const iconSrc = theme === 'dark' && model.iconDark ? model.iconDark : model.icon
+
   return (
     <motion.div
       ref={ref}
@@ -72,16 +152,28 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.2 }}
     >
+      {/* Column Header - AI Fiesta Style */}
       <div className="column-header">
         <img
-          src={model.icon}
+          src={iconSrc}
           alt={model.name}
           className={`column-icon ${model.darkLogo ? 'dark-logo' : ''}`}
           onError={(e) => { e.target.style.display = 'none' }}
         />
-        <span className="column-name">{model.name}</span>
+        <ModelDropdown modelKey={modelKey} model={model} />
+        <button className="column-external" onClick={handleExternalOpen} title="Open in new tab">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+          </svg>
+        </button>
+        <div 
+          className={`column-toggle ${isActive ? 'active' : ''}`}
+          onClick={onToggle}
+        />
       </div>
       <div className="column-content" ref={contentRef} onScroll={handleScroll}>
+        {/* Dotted grid background */}
+        <div className="column-grid-bg"></div>
         {messages.map((msg, idx) => (
           msg.role === 'user' && (
             <Message
@@ -104,10 +196,8 @@ const ChatColumn = memo(forwardRef(({ modelKey, model, messages, responses, widt
   )
 }))
 
-// Council chat view - single column with council responses
 const CouncilChatView = memo(({ messages, councilResponses }) => {
   const contentRef = useRef(null)
-
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight
@@ -145,10 +235,8 @@ const CouncilChatView = memo(({ messages, councilResponses }) => {
   )
 })
 
-// Image generation chat view
 const ImageGenChatView = memo(({ messages, imageResponses }) => {
   const contentRef = useRef(null)
-
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight
@@ -177,14 +265,10 @@ const ImageGenChatView = memo(({ messages, imageResponses }) => {
 })
 
 function ChatArea() {
-  const { models, activeModels, getCurrentChat, councilMode } = useStore()
+  const { models, activeModels, toggleModel, getCurrentChat, councilMode, toggleCouncilMode } = useStore()
   const chat = getCurrentChat()
   const hasMessages = chat?.messages?.length > 0
-  
-  // Check if any message in the chat used council mode
   const hasCouncilMessages = chat?.messages?.some(m => m.councilMode)
-  
-  // Check if any message in the chat is image generation
   const hasImageGenMessages = chat?.messages?.some(m => m.isImageGeneration)
   
   const [columnWidths, setColumnWidths] = useState({})
@@ -203,13 +287,10 @@ function ChatArea() {
     e.preventDefault()
     resizingRef.current = modelKey
     startXRef.current = e.clientX
-    
     const columnIndex = activeModels.indexOf(modelKey)
     const columns = containerRef.current?.querySelectorAll('.chat-column')
-    
     if (columns && columns[columnIndex]) {
       startWidthRef.current = columns[columnIndex].offsetWidth
-      
       if (columnIndex < activeModels.length - 1) {
         nextColumnKeyRef.current = activeModels[columnIndex + 1]
         nextColumnStartWidthRef.current = columns[columnIndex + 1].offsetWidth
@@ -218,7 +299,6 @@ function ChatArea() {
         nextColumnStartWidthRef.current = 0
       }
     }
-    
     document.addEventListener('mousemove', handleResizeMove)
     document.addEventListener('mouseup', handleResizeEnd)
     document.body.style.cursor = 'col-resize'
@@ -227,15 +307,11 @@ function ChatArea() {
 
   const handleResizeMove = useCallback((e) => {
     if (!resizingRef.current) return
-    
     const delta = e.clientX - startXRef.current
     const minWidth = 300
-    
     const newWidth = Math.max(minWidth, startWidthRef.current + delta)
-    
     if (nextColumnKeyRef.current && nextColumnStartWidthRef.current) {
       const nextNewWidth = Math.max(minWidth, nextColumnStartWidthRef.current - delta)
-      
       if (newWidth >= minWidth && nextNewWidth >= minWidth) {
         setColumnWidths(prev => ({
           ...prev,
@@ -260,7 +336,6 @@ function ChatArea() {
     document.body.style.userSelect = ''
   }, [handleResizeMove])
 
-  // Determine which view to show
   const showCouncilView = hasCouncilMessages || councilMode
   const showImageGenView = hasImageGenMessages && !showCouncilView
 
@@ -268,7 +343,11 @@ function ChatArea() {
     <div className="chat-columns-container">
       <AnimatePresence mode="wait">
         {!hasMessages ? (
-          <WelcomeScreen key="welcome" />
+          <WelcomeScreen 
+            key="welcome" 
+            councilMode={councilMode}
+            toggleCouncilMode={toggleCouncilMode}
+          />
         ) : showImageGenView ? (
           <motion.div
             key="imagegen"
@@ -316,6 +395,8 @@ function ChatArea() {
                   responses={chat.responses}
                   width={columnWidths[modelKey]}
                   onResizeStart={handleResizeStart}
+                  isActive={true}
+                  onToggle={() => toggleModel(modelKey)}
                 />
               )
             })}

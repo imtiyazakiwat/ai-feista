@@ -4,18 +4,19 @@ import useStore from '../store/useStore'
 import { sendToAllModels, generateChatTitle, uploadImage, enhancePrompt, processFile, FILE_ACCEPT } from '../utils/api'
 import { runCouncil } from '../utils/councilApi'
 import { generateImage, parseGenerateCommand, IMAGE_MODELS } from '../utils/imageApi'
-// IMAGE_MODELS used for getting model name in loading state
 
 function InputArea() {
   const [message, setMessage] = useState('')
   const [images, setImages] = useState([])
   const [files, setFiles] = useState([])
-  const [uploading, setUploading] = useState(false)
   const [enhancing, setEnhancing] = useState(false)
-  const [thinkingMode, setThinkingMode] = useState(false)
+  const [showPlusMenu, setShowPlusMenu] = useState(false)
+  const [webSearchMode, setWebSearchMode] = useState(false)
   const imageInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const inputRef = useRef(null)
+  const plusMenuRef = useRef(null)
+  
   const {
     activeModels,
     models,
@@ -29,13 +30,26 @@ function InputArea() {
     setAbortControllers,
     stopGenerating,
     councilMode,
-    toggleCouncilMode,
     imageGenMode,
     toggleImageGenMode,
     selectedImageModel,
     updateCouncilResponse,
-    updateImageResponse
+    updateImageResponse,
+    thinkingMode,
+    toggleThinkingMode,
+    getModelId
   } = useStore()
+
+  // Close plus menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (plusMenuRef.current && !plusMenuRef.current.contains(e.target)) {
+        setShowPlusMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -58,8 +72,6 @@ function InputArea() {
 
   const handleImageUpload = useCallback(async (fileList) => {
     if (!fileList || fileList.length === 0) return
-    
-    setUploading(true)
     try {
       const uploadPromises = Array.from(fileList).slice(0, 4).map(file => uploadImage(file))
       const urls = await Promise.all(uploadPromises)
@@ -67,15 +79,11 @@ function InputArea() {
     } catch (error) {
       console.error('Image upload failed:', error)
       alert('Failed to upload image. Please try again.')
-    } finally {
-      setUploading(false)
     }
   }, [])
 
   const handleFileUpload = useCallback(async (fileList) => {
     if (!fileList || fileList.length === 0) return
-    
-    setUploading(true)
     try {
       const processPromises = Array.from(fileList).slice(0, 3).map(file => processFile(file))
       const processed = await Promise.all(processPromises)
@@ -83,25 +91,56 @@ function InputArea() {
     } catch (error) {
       console.error('File processing failed:', error)
       alert(error.message || 'Failed to process file. Please try again.')
-    } finally {
-      setUploading(false)
     }
   }, [])
+
+  // Combined handler for attach files (images + documents)
+  const handleAttachFiles = useCallback(async (fileList) => {
+    if (!fileList || fileList.length === 0) return
+    
+    const imageFiles = []
+    const docFiles = []
+    
+    Array.from(fileList).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        imageFiles.push(file)
+      } else {
+        docFiles.push(file)
+      }
+    })
+    
+    // Upload images
+    if (imageFiles.length > 0) {
+      await handleImageUpload(imageFiles)
+    }
+    
+    // Process documents
+    if (docFiles.length > 0) {
+      await handleFileUpload(docFiles)
+    }
+  }, [handleImageUpload, handleFileUpload])
 
   const handleImageChange = useCallback((e) => {
     handleImageUpload(e.target.files)
     e.target.value = ''
+    setShowPlusMenu(false)
   }, [handleImageUpload])
 
   const handleFileChange = useCallback((e) => {
     handleFileUpload(e.target.files)
     e.target.value = ''
+    setShowPlusMenu(false)
   }, [handleFileUpload])
+
+  const handleAttachChange = useCallback((e) => {
+    handleAttachFiles(e.target.files)
+    e.target.value = ''
+    setShowPlusMenu(false)
+  }, [handleAttachFiles])
 
   const handlePaste = useCallback((e) => {
     const items = e.clipboardData?.items
     if (!items) return
-    
     const imageFiles = []
     for (const item of items) {
       if (item.type.startsWith('image/')) {
@@ -127,16 +166,14 @@ function InputArea() {
     if ((!message.trim() && images.length === 0 && files.length === 0) || activeModels.length === 0) return
 
     const text = message.trim() || (images.length > 0 ? 'What is in this image?' : 'Analyze this file')
-    
-    // Check for /generate command OR imageGenMode is enabled
     const generateCmd = parseGenerateCommand(text)
     const shouldGenerateImage = generateCmd || imageGenMode
     
     const currentImages = [...images]
     const currentFiles = [...files]
-    const currentThinkingMode = thinkingMode
     const currentImageGenMode = imageGenMode
     const currentCouncilMode = councilMode
+    const currentThinkingMode = thinkingMode
     setMessage('')
     setImages([])
     setFiles([])
@@ -153,19 +190,18 @@ function InputArea() {
       content: text, 
       images: currentImages.length > 0 ? currentImages : undefined,
       files: currentFiles.length > 0 ? currentFiles : undefined,
-      thinkingMode: currentThinkingMode,
       imageGenMode: currentImageGenMode,
       councilMode: currentCouncilMode,
-      isImageGeneration: shouldGenerateImage
+      thinkingMode: currentThinkingMode,
+      isImageGeneration: shouldGenerateImage,
+      webSearch: webSearchMode
     })
 
     const updatedChat = useStore.getState().chats.find(c => c.id === chat.id)
 
-    // Image generation mode via /generate command OR imageGenMode toggle
     if (shouldGenerateImage) {
-      // Get prompt and model - from command or use selected model
       let imagePrompt = text
-      let imageModel = selectedImageModel // use selected model from dropdown
+      let imageModel = selectedImageModel
       
       if (generateCmd) {
         if (generateCmd.error) {
@@ -177,10 +213,9 @@ function InputArea() {
           return
         }
         imagePrompt = generateCmd.prompt
-        imageModel = generateCmd.model // command overrides selected model
+        imageModel = generateCmd.model
       }
 
-      // Initialize with loading state
       updateImageResponse(msgIndex, {
         isGenerating: true,
         model: IMAGE_MODELS[imageModel]?.name || 'Unknown'
@@ -204,7 +239,6 @@ function InputArea() {
 
       setGenerating(false)
       
-      // Generate title
       const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
       if (finalChat && !finalChat.title) {
         const title = await generateChatTitle(finalChat.messages, finalChat.title)
@@ -215,9 +249,10 @@ function InputArea() {
       return
     }
 
-    // Council mode - run the 3-stage council process
     if (currentCouncilMode) {
-      // Initialize council response with loading state
+      const councilController = new AbortController()
+      setAbortControllers([councilController])
+      
       updateCouncilResponse(msgIndex, {
         loading: { stage1: true, stage2: false, stage3: false },
         stage1: null,
@@ -227,6 +262,9 @@ function InputArea() {
       })
 
       await runCouncil(text, (progress) => {
+        // Check if aborted before updating
+        if (councilController.signal.aborted) return
+        
         const currentData = useStore.getState().chats.find(c => c.id === chat.id)?.councilResponses?.[msgIndex] || {}
         
         if (progress.status === 'start') {
@@ -252,11 +290,11 @@ function InputArea() {
           }
           updateCouncilResponse(msgIndex, newData)
         }
-      })
+      }, councilController.signal)
 
       setGenerating(false)
+      setAbortControllers([])
     } else {
-      // Normal mode - send to all models
       const controllers = activeModels.map(() => new AbortController())
       setAbortControllers(controllers)
 
@@ -268,7 +306,8 @@ function InputArea() {
         controllers,
         onUpdate: (modelKey, response) => {
           updateResponse(modelKey, msgIndex, response)
-        }
+        },
+        getModelId
       })
 
       setGenerating(false)
@@ -287,7 +326,7 @@ function InputArea() {
         }
       }
     }
-  }, [message, images, files, thinkingMode, imageGenMode, selectedImageModel, councilMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
+  }, [message, images, files, imageGenMode, selectedImageModel, councilMode, webSearchMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -306,7 +345,6 @@ function InputArea() {
 
   const handleEnhance = useCallback(async () => {
     if (!message.trim() || enhancing) return
-    
     setEnhancing(true)
     try {
       const enhanced = await enhancePrompt(message.trim())
@@ -322,19 +360,18 @@ function InputArea() {
 
   const getFileIcon = (type) => {
     switch (type) {
-      case 'pdf':
-        return '📄'
-      case 'csv':
-        return '📊'
-      case 'text':
-        return '📝'
-      default:
-        return '📎'
+      case 'pdf': return '📄'
+      case 'csv': return '📊'
+      case 'text': return '📝'
+      default: return '📎'
     }
   }
 
+  const chat = getCurrentChat()
+  const hasMessages = chat?.messages?.length > 0
+
   return (
-    <div className="input-area">
+    <div className={`input-area ${!hasMessages ? 'centered' : ''}`}>
       <AnimatePresence>
         {(images.length > 0 || files.length > 0) && (
           <motion.div 
@@ -385,144 +422,187 @@ function InputArea() {
           multiple
           style={{ display: 'none' }}
         />
+        <input
+          type="file"
+          id="attachInput"
+          onChange={handleAttachChange}
+          accept={`image/*,${FILE_ACCEPT}`}
+          multiple
+          style={{ display: 'none' }}
+        />
         
-        <motion.button
-          className="attach-btn"
-          onClick={() => imageInputRef.current?.click()}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          disabled={uploading}
-          title="Attach image (Ctrl+V to paste)"
-        >
-          {uploading ? (
-            <svg className="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12"/>
+        {/* Plus Menu Button */}
+        <div className="plus-menu-container" ref={plusMenuRef}>
+          <motion.button
+            className="plus-btn"
+            onClick={() => setShowPlusMenu(!showPlusMenu)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14"/>
             </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
-          )}
-        </motion.button>
-
-        <motion.button
-          className="attach-btn file-btn"
-          onClick={() => fileInputRef.current?.click()}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          disabled={uploading}
-          title="Attach file (PDF, TXT, CSV)"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-          </svg>
-        </motion.button>
+          </motion.button>
+          
+          <AnimatePresence>
+            {showPlusMenu && (
+              <motion.div
+                className="plus-menu"
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+              >
+                <button className="plus-menu-item" onClick={() => { document.getElementById('attachInput')?.click() }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                  <span>Attach Files</span>
+                </button>
+                <button className={`plus-menu-item ${thinkingMode ? 'active' : ''}`} onClick={() => { toggleThinkingMode(); setShowPlusMenu(false) }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>Think Mode {thinkingMode ? '✓' : ''}</span>
+                </button>
+                <div className="plus-menu-divider">
+                  <span>Generate</span>
+                </div>
+                <button className="plus-menu-item" onClick={() => { toggleImageGenMode(); setShowPlusMenu(false) }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span>Image</span>
+                </button>
+                <button className="plus-menu-item" onClick={() => setShowPlusMenu(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <span>Document</span>
+                </button>
+                <button className="plus-menu-item" onClick={() => { setWebSearchMode(true); setShowPlusMenu(false) }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                  </svg>
+                  <span>Web Search</span>
+                </button>
+                <button className="plus-menu-item has-arrow" onClick={() => setShowPlusMenu(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
+                    <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+                  </svg>
+                  <span>Deep Research</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M7 17L17 7M17 7H7M17 7v10"/>
+                  </svg>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
         
         <input
           ref={inputRef}
           type="text"
           className="message-input"
-          placeholder={imageGenMode ? "Describe the image you want to generate..." : "Ask me anything... (Ctrl+/ to focus)"}
+          placeholder={imageGenMode ? "Describe the image you want to generate..." : thinkingMode ? "Ask a complex question (thinking enabled)..." : "Ask me anything..."}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           autoComplete="off"
         />
-        <div className="input-actions">
-          <motion.button
-            className={`mode-btn council-btn ${councilMode ? 'active' : ''}`}
-            onClick={toggleCouncilMode}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title="Council mode (BETA) - Get consensus from multiple LLMs"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        
+        {/* Microphone button */}
+        <motion.button
+          className="mic-btn"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          title="Voice input"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+            <path d="M19 10v2a7 7 0 01-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </motion.button>
+        
+        <motion.button
+          className={`send-btn ${isGenerating ? 'generating' : ''}`}
+          onClick={isGenerating ? stopGenerating : handleSend}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          title={isGenerating ? 'Stop (Esc)' : 'Send (Enter)'}
+        >
+          {isGenerating ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
             </svg>
-            {councilMode && <span className="beta-dot" />}
-          </motion.button>
-          <motion.button
-            className={`mode-btn ${thinkingMode ? 'active' : ''}`}
-            onClick={() => setThinkingMode(!thinkingMode)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title="Thinking mode - Enable deep reasoning"
-            disabled={councilMode}
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          )}
+        </motion.button>
+      </div>
+      
+      {/* Quick Action Buttons - shown on welcome screen */}
+      {!hasMessages && (
+        <div className="quick-actions">
+          <button 
+            className={`quick-action-btn ${thinkingMode ? 'active' : ''}`}
+            onClick={toggleThinkingMode}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
               <path d="M12 6v6l4 2"/>
             </svg>
-          </motion.button>
-          <motion.button
-            className={`mode-btn ${imageGenMode ? 'active' : ''}`}
-            onClick={toggleImageGenMode}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title="Image generation mode"
-            disabled={councilMode}
+            <span>Think</span>
+          </button>
+          <button 
+            className={`quick-action-btn ${webSearchMode ? 'active' : ''}`}
+            onClick={() => setWebSearchMode(!webSearchMode)}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+            </svg>
+            <span>Web Search</span>
+          </button>
+          <button 
+            className={`quick-action-btn ${imageGenMode ? 'active' : ''}`}
+            onClick={toggleImageGenMode}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <polyline points="21 15 16 10 5 21"/>
-              <path d="M12 12l3-3"/>
             </svg>
-          </motion.button>
-          <motion.button
-            className={`enhance-btn ${enhancing ? 'enhancing' : ''}`}
-            onClick={handleEnhance}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            disabled={!message.trim() || enhancing}
-            title="Enhance prompt (Ctrl+E)"
-          >
-            {enhancing ? (
-              <svg className="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-            )}
-          </motion.button>
-          <motion.button
-            className={`send-btn ${isGenerating ? 'generating' : ''}`}
-            onClick={isGenerating ? stopGenerating : handleSend}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title={isGenerating ? 'Stop (Esc)' : 'Send (Enter)'}
-          >
-            {isGenerating ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
-            )}
-          </motion.button>
+            <span>Generate Image</span>
+          </button>
         </div>
-      </div>
+      )}
       
-      <div className="keyboard-hints">
-        <span>Enter send</span>
-        <span>Esc stop</span>
-        <span>Ctrl+E enhance</span>
-        <span>Ctrl+N new</span>
-      </div>
+      {hasMessages && (
+        <div className="keyboard-hints">
+          <span>Enter send</span>
+          <span>Esc stop</span>
+          <span>Ctrl+E enhance</span>
+          <span>Ctrl+N new</span>
+        </div>
+      )}
     </div>
   )
 }

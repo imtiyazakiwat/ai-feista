@@ -14,9 +14,19 @@ const COUNCIL_MODELS = [
 // Chairman model for final synthesis - using Gemini for speed and quality
 const CHAIRMAN_MODEL = 'openrouter:google/gemini-2.5-pro'
 
-async function queryModel(model, messages, timeout = 120000) {
+async function queryModel(model, messages, timeout = 120000, externalSignal = null) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
+  
+  // If external signal is aborted, abort this request too
+  if (externalSignal?.aborted) {
+    clearTimeout(timeoutId)
+    return null
+  }
+  
+  // Listen for external abort
+  const abortHandler = () => controller.abort()
+  externalSignal?.addEventListener('abort', abortHandler)
 
   try {
     const response = await fetch(DIRECT_API_URL, {
@@ -30,6 +40,7 @@ async function queryModel(model, messages, timeout = 120000) {
     })
 
     clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', abortHandler)
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`)
@@ -42,13 +53,20 @@ async function queryModel(model, messages, timeout = 120000) {
     }
   } catch (error) {
     clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', abortHandler)
+    if (error.name === 'AbortError') {
+      return null // Silently return null on abort
+    }
     console.error(`Error querying model ${model}:`, error)
     return null
   }
 }
 
-async function queryModelsParallel(models, messages) {
-  const promises = models.map(model => queryModel(model, messages))
+async function queryModelsParallel(models, messages, signal = null) {
+  // Check if already aborted
+  if (signal?.aborted) return {}
+  
+  const promises = models.map(model => queryModel(model, messages, 120000, signal))
   const responses = await Promise.all(promises)
   
   const result = {}
@@ -59,11 +77,15 @@ async function queryModelsParallel(models, messages) {
 }
 
 // Stage 1: Collect individual responses from all council models
-async function stage1CollectResponses(userQuery, onProgress) {
+async function stage1CollectResponses(userQuery, onProgress, signal = null) {
+  if (signal?.aborted) return []
+  
   onProgress?.({ stage: 1, status: 'start' })
   
   const messages = [{ role: 'user', content: userQuery }]
-  const responses = await queryModelsParallel(COUNCIL_MODELS, messages)
+  const responses = await queryModelsParallel(COUNCIL_MODELS, messages, signal)
+
+  if (signal?.aborted) return []
 
   const stage1Results = []
   for (const [model, response] of Object.entries(responses)) {
@@ -80,7 +102,9 @@ async function stage1CollectResponses(userQuery, onProgress) {
 }
 
 // Stage 2: Each model ranks the anonymized responses
-async function stage2CollectRankings(userQuery, stage1Results, onProgress) {
+async function stage2CollectRankings(userQuery, stage1Results, onProgress, signal = null) {
+  if (signal?.aborted) return { stage2Results: [], labelToModel: {} }
+  
   onProgress?.({ stage: 2, status: 'start' })
 
   // Create anonymized labels (Response A, B, C, etc.)
@@ -129,7 +153,9 @@ FINAL RANKING:
 Now provide your evaluation and ranking:`
 
   const messages = [{ role: 'user', content: rankingPrompt }]
-  const responses = await queryModelsParallel(COUNCIL_MODELS, messages)
+  const responses = await queryModelsParallel(COUNCIL_MODELS, messages, signal)
+
+  if (signal?.aborted) return { stage2Results: [], labelToModel: {} }
 
   const stage2Results = []
   for (const [model, response] of Object.entries(responses)) {
@@ -155,7 +181,9 @@ Now provide your evaluation and ranking:`
 }
 
 // Stage 3: Chairman synthesizes final response
-async function stage3Synthesize(userQuery, stage1Results, stage2Results, onProgress) {
+async function stage3Synthesize(userQuery, stage1Results, stage2Results, onProgress, signal = null) {
+  if (signal?.aborted) return { model: '', response: 'Generation stopped.' }
+  
   onProgress?.({ stage: 3, status: 'start' })
 
   const stage1Text = stage1Results.map(result => 
@@ -184,7 +212,9 @@ Your task as Chairman is to synthesize all of this information into a single, co
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:`
 
   const messages = [{ role: 'user', content: chairmanPrompt }]
-  const response = await queryModel(CHAIRMAN_MODEL, messages)
+  const response = await queryModel(CHAIRMAN_MODEL, messages, 120000, signal)
+
+  if (signal?.aborted) return { model: '', response: 'Generation stopped.' }
 
   const stage3Result = {
     model: CHAIRMAN_MODEL.replace('openrouter:', ''),
@@ -246,10 +276,19 @@ function calculateAggregateRankings(stage2Results, labelToModel) {
 }
 
 // Run the full council process
-export async function runCouncil(userQuery, onProgress) {
+export async function runCouncil(userQuery, onProgress, signal = null) {
   try {
+    // Check if already aborted
+    if (signal?.aborted) {
+      return { error: 'Generation stopped.', stage1: [], stage2: [], stage3: null, metadata: {}, stopped: true }
+    }
+    
     // Stage 1
-    const stage1Results = await stage1CollectResponses(userQuery, onProgress)
+    const stage1Results = await stage1CollectResponses(userQuery, onProgress, signal)
+    
+    if (signal?.aborted) {
+      return { error: 'Generation stopped.', stage1: stage1Results, stage2: [], stage3: null, metadata: {}, stopped: true }
+    }
     
     if (stage1Results.length === 0) {
       return {
@@ -265,8 +304,13 @@ export async function runCouncil(userQuery, onProgress) {
     const { stage2Results, labelToModel } = await stage2CollectRankings(
       userQuery, 
       stage1Results, 
-      onProgress
+      onProgress,
+      signal
     )
+
+    if (signal?.aborted) {
+      return { error: 'Generation stopped.', stage1: stage1Results, stage2: stage2Results, stage3: null, metadata: { label_to_model: labelToModel }, stopped: true }
+    }
 
     // Calculate aggregate rankings
     const aggregateRankings = calculateAggregateRankings(stage2Results, labelToModel)
@@ -276,7 +320,8 @@ export async function runCouncil(userQuery, onProgress) {
       userQuery,
       stage1Results,
       stage2Results,
-      onProgress
+      onProgress,
+      signal
     )
 
     return {
@@ -286,16 +331,18 @@ export async function runCouncil(userQuery, onProgress) {
       metadata: {
         label_to_model: labelToModel,
         aggregate_rankings: aggregateRankings
-      }
+      },
+      stopped: signal?.aborted
     }
   } catch (error) {
     console.error('Council error:', error)
     return {
-      error: error.message,
+      error: signal?.aborted ? 'Generation stopped.' : error.message,
       stage1: [],
       stage2: [],
       stage3: null,
-      metadata: {}
+      metadata: {},
+      stopped: signal?.aborted
     }
   }
 }

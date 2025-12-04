@@ -1,207 +1,241 @@
-# AI Fiesta Feature Comparison
+# AI Fiesta - Complete UI/UX Specification
 
-## What We Have ✅
-
-| Feature | Status |
-|---------|--------|
-| Multi-model chat (ChatGPT, Claude, Gemini, Perplexity, Grok, DeepSeek) | ✅ |
-| Side-by-side response comparison | ✅ |
-| Dark/Light theme toggle | ✅ |
-| Chat history with grouping (Today/Yesterday/Older) | ✅ |
-| Streaming responses | ✅ |
-| Stop generation | ✅ |
-| Auto-generated chat titles | ✅ |
-| Drag & drop model reordering | ✅ |
-| Toggle models on/off | ✅ |
-| Resizable columns | ✅ |
-| Thinking/reasoning display (Claude, DeepSeek) | ✅ |
-| Fallback models on failure | ✅ |
-| Mobile responsive sidebar | ✅ |
-| Local storage persistence | ✅ |
+## Overview
+AI Fiesta is a multi-model AI chat comparison platform that allows users to query multiple AI models simultaneously and compare their responses side by side.
 
 ---
 
-## Recently Implemented ✅ (New!)
+## 1. Layout Structure
 
-#### ✅ Vision/Image Support
-- Upload images via button or paste (Ctrl+V)
-- Images uploaded to ImgBB for URL
-- Multi-image support (up to 4)
-- Works with ChatGPT, Claude, Gemini, Grok
-
-#### ✅ Rename Chats
-- Click edit icon on any chat
-- Inline editing with Enter to save, Esc to cancel
-
-#### ✅ Copy Response Button
-- Hover over any response to see copy button
-- One-click copy to clipboard
-- Visual feedback on copy
-
-#### ✅ Chat Search
-- Search bar in sidebar (Ctrl+K)
-- Searches titles and message content
-- Real-time filtering
-
-#### ✅ Keyboard Shortcuts
-- Ctrl+N = New chat
-- Ctrl+K = Focus search
-- Ctrl+/ = Focus input
-- Ctrl+E = Enhance prompt
-- Enter = Send message
-- Esc = Stop generating
-
-#### ✅ Prompt Enhancement
-- Star button next to send
-- AI-powered prompt improvement
-- Makes prompts clearer and more specific
-- Ctrl+E keyboard shortcut
-
-#### ✅ Regenerate Single Model
-- Refresh button on each response
-- Regenerate just one model's response
-- Works independently per model
+### Desktop Layout
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ┌──────────┐ ┌────────────────────────────────────────────────┐ │
+│ │          │ │ Model Tabs Header                              │ │
+│ │          │ ├────────────────────────────────────────────────┤ │
+│ │ Sidebar  │ │                                                │ │
+│ │ (260px)  │ │              Chat Area                         │ │
+│ │          │ │         (with dotted grid bg)                  │ │
+│ │          │ │                                                │ │
+│ │          │ ├────────────────────────────────────────────────┤ │
+│ │          │ │ Input Area                                     │ │
+│ └──────────┘ └────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Missing Features 🚧
+## 2. Sidebar Components
 
-### High Priority
+### 2.1 Header
+- Logo with green gradient background (32x32px rounded)
+- "AI Fiesta" text
+- Theme toggle button (sun/moon icon)
 
-#### 1. File Upload Support
-- **PDF, DOC, TXT, CSV analysis**
-- Upload documents and ask questions about them
-- Extract and summarize content
+### 2.2 Search Bar
+- Magnifying glass icon
+- Placeholder: "Search"
+- Full width, rounded corners (10px)
 
-#### 2. Image Generation
-- Built-in AI image creation (DALL-E, Midjourney-style)
-- Image editing capabilities
-- Generate visuals directly in chat
+### 2.3 New Chat Button
+- Edit/pencil icon + "New chat" text
+- Border style, full width
 
-#### 3. Audio Transcription
-- Voice-to-text input
-- Upload audio files for transcription
-- Speech recognition for hands-free input
+### 2.4 Navigation Sections
+Each section has:
+- Icon + Label + Plus button (on hover) + Chevron
 
-#### 4. Prompt Enhancement/Boost
-- Auto-improve unclear or short prompts
-- Fix spelling and grammar before sending
-- Optimize prompts for better AI responses
+**Sections:**
+- 👤 Avatars - AI persona presets
+- 📁 Projects - Saved project contexts  
+- 🎮 Games - Interactive AI games
 
-#### 5. Selective Follow-up
-- Continue conversation with specific model only
-- Ask follow-up to just one AI instead of all
-- Model-specific conversation branching
+### 2.5 Chat History
+- Grouped by: Today, Yesterday, Previous dates
+- Each item shows title, hover reveals edit/delete
 
-### Medium Priority
-
-#### 6. Projects/Custom Modes
-- Save custom system prompts as "modes"
-- Marketing Mode, Coding Mode, Student Mode, etc.
-- One-tap apply to all AI responses
-- Persistent project settings
-
-#### 7. Voice Input
-- Microphone button for voice queries
-- Real-time speech-to-text
-- Hands-free interaction
-
-#### 8. Export/Share
-- Export chat as PDF/Markdown
-- Share conversation links
-- Copy entire conversation
-
-### Lower Priority (Nice to Have)
-
-#### 11. More AI Models
-- Add 10+ additional models
-- Model categories (fast, quality, specialized)
-- Custom model selection
-
-#### 12. Regional Language Support
-- Hindi, Bengali, Tamil, Telugu, Kannada
-- Localized UI
-- Multi-language prompts
-
-#### 13. Token/Usage Tracking
-- Display token consumption per query
-- Usage limits and warnings
-- Cost estimation
-
-#### 14. Prompt Library
-- Pre-built prompt templates
-- 3000+ prompts across categories
-- Save custom prompts
-
-#### 15. Mobile App
-- Native iOS/Android apps
-- Push notifications
-- Offline mode
-
-#### 16. Keyboard Shortcuts
-- Quick actions (new chat, send, stop)
-- Navigation shortcuts
-- Power user features
-
-#### 17. Code Syntax Highlighting
-- Better code block rendering
-- Copy code button
-- Language detection
-
-#### 18. Response Actions
-- Copy individual response
-- Regenerate specific model
-- Rate/feedback on responses
+### 2.6 Footer
+- **Plan Section**: "Free Plan" card with usage bar
+- **Upgrade Button**: "✨ Upgrade plan"
+- **User Profile**: Avatar + Name + Collapse button
 
 ---
 
-## Implementation Priority Roadmap
+## 3. Model Tabs Header
 
-### Phase 1 - Core Enhancements ✅ COMPLETE
-1. ✅ Prompt Enhancement (auto-improve prompts)
-2. ✅ Chat Search
-3. ✅ Rename Chats
-4. ✅ Copy Response Button
-5. ✅ Regenerate Single Model
-6. ✅ Vision/Image Support (bonus!)
+### Tab Components
+Each model tab contains:
+1. Model logo (20x20px)
+2. Model name with dropdown arrow
+3. External link icon (opens model in new tab)
+4. Toggle switch (on/off)
 
-### Phase 2 - Media Features
-1. 📁 File Upload (PDF, DOC, TXT, CSV)
-2. 🎤 Voice Input
-3. 🖼️ Image Generation
-4. 🎵 Audio Transcription
+### Tab States
+- Active: Full opacity, green toggle
+- Inactive: 50% opacity, gray toggle
+- Draggable for reordering
 
-### Phase 3 - Advanced Features
-1. 📂 Projects/Custom Modes
-2. 💬 Selective Follow-up
-3. 📤 Export/Share
-4. ⌨️ Keyboard Shortcuts
-
-### Phase 4 - Polish
-1. 🌐 Regional Languages
-2. 📊 Token Tracking
-3. 📚 Prompt Library
-4. 🎨 More Themes
+### Right Side
+- Settings/grid icon button
 
 ---
 
-## Quick Wins (Easy to Implement)
+## 4. Welcome Screen (Empty State)
 
-| Feature | Effort | Impact |
-|---------|--------|--------|
-| Rename chats | Low | Medium |
-| Copy response button | Low | High |
-| Chat search | Medium | High |
-| Keyboard shortcuts | Low | Medium |
-| Code copy button | Low | High |
+### Layout (centered)
+1. **Mode Toggle Pills** - at vertical center
+   - "Multi-Chat" (green when active)
+   - "Super Fiesta" (gradient when active)
+
+2. **Input Area** - below mode pills
+   - Plus (+) button - opens attachment menu
+   - Text input: "Ask me anything..."
+   - Microphone button
+   - Send button (green)
+
+3. **Quick Actions** - below input
+   - "🌐 Web Search" pill
+   - "🖼️ Generate Image" pill
+
+4. **Explore Section** - at bottom
+   - "Explore" header + "See more >" link
+   - Horizontal scrollable avatar cards
+
+### Dotted Grid Background
+- Subtle dot pattern (20px spacing)
+- Light gray dots on light theme
+- Dark gray dots on dark theme
 
 ---
 
-## Competitive Advantages We Could Add
+## 5. Plus Menu (Attachment Menu)
 
-1. **Free tier** - AI Fiesta is paid only
-2. **Open source** - Community contributions
-3. **Self-hostable** - Privacy-focused users
-4. **API access** - Developer integrations
-5. **Browser extension** - Use anywhere on web
-6. **Offline mode** - Cached responses
+When clicking + button:
+```
+┌─────────────────────┐
+│ 📎 Attach Files     │
+├─────────────────────┤
+│ Generate            │
+│ 🖼️ Image            │
+│ 📄 Document         │
+│ 🌐 Web Search       │
+│ 🔬 Deep Research  > │
+└─────────────────────┘
+```
+
+---
+
+## 6. Chat Response View
+
+### Multi-Column Layout
+- Each active model gets a column
+- Columns are resizable (drag handle)
+- Minimum width: 350px
+
+### Column Structure
+```
+┌─────────────────────┐
+│ [icon] Model Name   │ <- Header
+├─────────────────────┤
+│                     │
+│ User message bubble │ <- Right aligned
+│                     │
+│ [icon] AI response  │ <- Left aligned
+│ [copy][👍][👎][↻]   │ <- Action buttons
+│                     │
+└─────────────────────┘
+```
+
+### Message Actions
+- Copy button
+- Thumbs up (like)
+- Thumbs down (dislike)
+- Regenerate button
+
+---
+
+## 7. Color Scheme
+
+### Light Theme (Default)
+```css
+--bg-sidebar: #fafafa
+--bg-main: #ffffff
+--bg-card: #f5f5f5
+--text-primary: #1a1a1a
+--text-secondary: #666666
+--accent: #10b981 (green)
+--dot-color: #d4d4d4
+```
+
+### Dark Theme
+```css
+--bg-sidebar: #141414
+--bg-main: #0a0a0a
+--bg-card: #1a1a1a
+--text-primary: #ffffff
+--text-secondary: #a0a0a0
+--accent: #10b981 (green)
+--dot-color: #333333
+```
+
+---
+
+## 8. Special Modes
+
+### Multi-Chat Mode (Default)
+- Multiple model columns
+- Parallel responses
+- Side-by-side comparison
+
+### Super Fiesta / Council Mode
+- Single column view
+- 3-stage LLM council process
+- Purple accent color
+- BETA badge
+
+### Image Generation Mode
+- Single column view
+- Image model selector in header
+- Generated image display
+- Download/copy actions
+
+---
+
+## 9. Explore Avatars
+
+Pre-configured AI personas:
+1. **Albert Einstein** - Science & physics expert
+2. **Career Coach** - Professional guidance
+3. **Creative Writer** - Storytelling assistance
+4. **Code Mentor** - Programming help
+
+---
+
+## 10. Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Enter | Send message |
+| Escape | Stop generating |
+| Ctrl/Cmd + N | New chat |
+| Ctrl/Cmd + K | Focus search |
+| Ctrl/Cmd + E | Enhance prompt |
+| Ctrl/Cmd + / | Focus input |
+
+---
+
+## 11. Responsive Breakpoints
+
+- **Desktop**: > 1024px - Full layout
+- **Tablet**: 768-1024px - Collapsible sidebar
+- **Mobile**: < 768px - Overlay sidebar, single column
+
+---
+
+## 12. Animations
+
+- Sidebar slide: 300ms ease
+- Tab hover: 150ms
+- Toggle switch: 300ms cubic-bezier
+- Message appear: fade + slide (200ms)
+- Skeleton shimmer: 1.5s infinite

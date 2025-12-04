@@ -63,18 +63,20 @@ const MODEL_SPECIFIC_PROMPTS = {
 const IMAGE_GEN_PROMPT = `\n\nIMPORTANT: This is an image generation request. Provide a detailed, creative description that can be used to generate an image. Focus on visual details, composition, style, lighting, colors, and mood.`
 
 async function callApi(model, messages, signal, extraParams = {}) {
+  const payload = { model, messages, stream: true, ...extraParams }
+  
   // Skip local API in dev mode since Vite doesn't have the serverless function
   if (useLocalApi && window.location.port !== '5173') {
     try {
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true, ...extraParams }),
+        body: JSON.stringify(payload),
         signal
       })
       if (response.ok) return response
     } catch (e) {
-      console.log('Local API not available, using direct API')
+      // Local API not available, fall through to direct API
     }
   }
 
@@ -84,7 +86,7 @@ async function callApi(model, messages, signal, extraParams = {}) {
       'Authorization': `Bearer ${API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ model, messages, stream: true, ...extraParams }),
+    body: JSON.stringify(payload),
     signal
   })
 }
@@ -96,29 +98,28 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
   const lastMessage = messages[messages.length - 1]
   const imageGenAddition = lastMessage?.imageGenMode ? IMAGE_GEN_PROMPT : ''
   
-  // Add global system prompt with model-specific additions
-  // Note: ChatGPT (GPT-5.1) has native reasoning and decides internally when to show reasoning_content
-  // Other models use thinking_budget parameter to enable reasoning
-  const modelAddition = MODEL_SPECIFIC_PROMPTS[modelKey] || ''
+  // Skip system prompt for GPT-5 and Claude in thinking mode (long system prompt disables reasoning_content)
+  const skipSystemPrompt = isThinkingMode && (modelKey === 'chatgpt' || modelKey === 'claude')
   
-  history.push({
-    role: 'system',
-    content: GLOBAL_SYSTEM_PROMPT + modelAddition + imageGenAddition
-  })
+  if (!skipSystemPrompt) {
+    // Add global system prompt with model-specific additions
+    const modelAddition = MODEL_SPECIFIC_PROMPTS[modelKey] || ''
+    
+    history.push({
+      role: 'system',
+      content: GLOBAL_SYSTEM_PROMPT + modelAddition + imageGenAddition
+    })
+  }
 
   messages.forEach((msg, idx) => {
     if (msg.role === 'user') {
       const hasImages = msg.images && msg.images.length > 0
       const hasFiles = msg.files && msg.files.length > 0
       
-      // Add "Think step by step" suffix if this is the last message and thinking mode is enabled
-      const isLastMessage = idx === messages.length - 1
-      const thinkingSuffix = (isLastMessage && isThinkingMode) ? '\n\nThink step by step.' : ''
-      
       // Build content array if we have images or files
       if ((hasImages && supportsVision) || hasFiles) {
         const content = [
-          { type: 'text', text: msg.content + thinkingSuffix }
+          { type: 'text', text: msg.content }
         ]
         
         // Add images
@@ -161,7 +162,7 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
         
         history.push({ role: 'user', content })
       } else {
-        history.push({ role: 'user', content: msg.content + thinkingSuffix })
+        history.push({ role: 'user', content: msg.content })
       }
       
       // Add previous assistant response if exists (not for the current message being processed)
@@ -299,7 +300,7 @@ Original prompt: "${prompt}"`
       }
     }
   } catch (e) {
-    console.error('Failed to enhance prompt:', e)
+    // Failed to enhance prompt
   }
   return null
 }
@@ -309,7 +310,7 @@ const FILE_TIMEOUT_MS = 60000 // 60 seconds for file uploads
 
 // retryState: 0 = first try, 1 = retry same model, 2 = use fallback
 // showGrokWarning: boolean to show warning for Grok (doesn't expose reasoning)
-async function streamResponse(modelKey, model, messages, responses, signal, onUpdate, retryState = 0, showGrokWarning = false) {
+async function streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, retryState = 0, showGrokWarning = false) {
   // Check if message has files - use longer timeout
   const lastMsg = messages[messages.length - 1]
   const hasFiles = lastMsg?.files && lastMsg.files.length > 0
@@ -327,33 +328,21 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     return
   }
   
-  // Select model based on thinking mode and retry state
-  let modelId
-  if (retryState === 2 && model.fallbackId) {
-    modelId = model.fallbackId
-  } else if (isThinkingMode && model.thinkingId) {
-    modelId = model.thinkingId
-  } else {
-    modelId = model.id
-  }
+  // Use the selected model ID (already determined by store based on variant and thinking mode)
+  const modelId = selectedModelId
   
   // Add reasoning parameters based on model type
-  // - ChatGPT: Uses reasoning_effort parameter
-  // - Gemini: Native reasoning (no parameters needed)
+  // Native reasoning models (no extra params needed): ChatGPT o-series, Gemini, DeepSeek R1, Kimi K2 Thinking
   // - Grok: Uses reasoning.enabled parameter
-  // - Claude, DeepSeek, Perplexity: Use thinking_budget parameter
+  // - Claude, Perplexity: Use thinking_budget parameter
   const extraParams = {}
   if (isThinkingMode) {
-    if (modelKey === 'chatgpt') {
-      extraParams.reasoning_effort = 'high'
-    } else if (modelKey === 'grok') {
+    if (modelKey === 'grok') {
       extraParams.reasoning = { enabled: true }
-    } else if (modelKey !== 'gemini') {
+    } else if (modelKey === 'claude' || modelKey === 'perplexity') {
       extraParams.thinking_budget = 10000
     }
   }
-  
-  const modelLabel = retryState === 2 ? 'fallback' : (retryState === 1 ? 'retry' : 'primary')
   
   let thinkingContent = ''
   let responseContent = ''
@@ -368,7 +357,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
   // Show warning for Grok if thinking mode is enabled (doesn't expose reasoning)
   const grokWarning = showGrokWarning ? `⚠️ Note: ${model.name} doesn't expose thinking/reasoning content in the API. While reasoning is enabled internally to improve response quality, you won't see the thinking process.` : ''
   if (showGrokWarning) {
-    console.log(`[${modelKey}] Showing Grok warning - thinking mode enabled but no reasoning_content available`)
     thinkingContent = grokWarning
     onUpdate(modelKey, {
       thinking: thinkingContent,
@@ -382,7 +370,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     timeoutId = setTimeout(() => {
       if (!receivedContent) {
         timeoutTriggered = true
-        console.log(`[${modelKey}] ${modelLabel} timeout after ${timeoutMs}ms`)
       }
     }, timeoutMs)
   }
@@ -393,12 +380,12 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     // Check if timeout was triggered during the fetch
     if (timeoutTriggered) {
       if (timeoutId) clearTimeout(timeoutId)
+      // Don't retry if aborted
+      if (signal.aborted) return
       if (retryState === 0) {
-        console.log(`[${modelKey}] Retrying same model...`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
-      } else if (retryState === 1 && model.fallbackId) {
-        console.log(`[${modelKey}] Switching to fallback: ${model.fallbackId}`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
+        return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 1)
+      } else if (retryState === 1) {
+        return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 2)
       }
     }
 
@@ -430,7 +417,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
             if (delta?.reasoning_content) {
               receivedContent = true
               if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-              // Start timer on first thinking token
               if (!thinkingStartTime) {
                 thinkingStartTime = Date.now()
               }
@@ -473,7 +459,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
                   thinkingContent = rawContent.substring(thinkStart, thinkEnd).trim()
                   responseContent = rawContent.substring(thinkEnd + 8).trim()
                   
-                  // Record thinking end time when </think> is found
                   if (!thinkingEndTime && thinkingStartTime) {
                     thinkingEndTime = Date.now()
                   }
@@ -489,7 +474,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
                   })
                   continue
                 }
-                // Case 3: No <think> tags - fall through to normal handling
               }
 
               // For other models - record end time when first content arrives
@@ -502,7 +486,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
 
               responseContent += delta.content
               
-              // Use recorded end time, not current time
               const thinkingTime = thinkingContent && thinkingStartTime && thinkingEndTime
                 ? `${Math.round((thinkingEndTime - thinkingStartTime) / 1000)}s` 
                 : null
@@ -524,19 +507,17 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     // Clear timeout
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
     
-    // Final update - use recorded end time if available
+    // Final update
     const thinkingTime = thinkingContent && thinkingStartTime
       ? `${Math.round(((thinkingEndTime || Date.now()) - thinkingStartTime) / 1000)}s` 
       : null
 
-    // If no content received, try retry then fallback
-    if (!receivedContent) {
+    // If no content received, try retry then fallback (but not if aborted)
+    if (!receivedContent && !signal.aborted) {
       if (retryState === 0) {
-        console.log(`[${modelKey}] No content received, retrying same model...`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
-      } else if (retryState === 1 && model.fallbackId) {
-        console.log(`[${modelKey}] Retry failed, trying fallback: ${model.fallbackId}`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
+        return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 1)
+      } else if (retryState === 1) {
+        return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 2)
       }
     }
 
@@ -548,7 +529,6 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
     })
 
   } catch (error) {
-    // Clear timeout on error
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
     
     if (error.name === 'AbortError') {
@@ -559,26 +539,25 @@ async function streamResponse(modelKey, model, messages, responses, signal, onUp
         stopped: true
       })
     } else {
-      // On error: retry same model first, then try fallback
-      if (retryState === 0) {
-        console.log(`[${modelKey}] Error occurred, retrying same model...`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 1)
-      } else if (retryState === 1 && model.fallbackId) {
-        console.log(`[${modelKey}] Retry failed, trying fallback: ${model.fallbackId}`)
-        return streamResponse(modelKey, model, messages, responses, signal, onUpdate, 2)
+      // Don't retry if aborted
+      if (!signal.aborted) {
+        if (retryState === 0) {
+          return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 1)
+        } else if (retryState === 1) {
+          return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 2)
+        }
       }
       
-      console.error(`[${modelKey}] Error:`, error)
       onUpdate(modelKey, {
-        error: error.message,
-        isStreaming: false
+        error: signal.aborted ? 'Generation stopped.' : error.message,
+        isStreaming: false,
+        stopped: signal.aborted
       })
     }
   }
 }
 
-export async function sendToAllModels({ activeModels, models, messages, responses, controllers, onUpdate }) {
-  // Check if current message has images or thinking mode
+export async function sendToAllModels({ activeModels, models, messages, responses, controllers, onUpdate, getModelId }) {
   const lastMessage = messages[messages.length - 1]
   const hasImages = lastMessage?.images && lastMessage.images.length > 0
   const isThinkingMode = lastMessage?.thinkingMode
@@ -587,7 +566,6 @@ export async function sendToAllModels({ activeModels, models, messages, response
     const model = models[modelKey]
     if (!model) return Promise.resolve()
     
-    // If message has images and model doesn't support vision, show error
     if (hasImages && !model.supportsVision) {
       onUpdate(modelKey, {
         content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
@@ -597,15 +575,15 @@ export async function sendToAllModels({ activeModels, models, messages, response
       return Promise.resolve()
     }
     
-    return streamResponse(modelKey, model, messages, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok')
+    const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
+    
+    return streamResponse(modelKey, model, modelId, messages, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok')
   })
 
   await Promise.allSettled(promises)
 }
 
-// Regenerate response for a single model
-export async function regenerateSingleModel({ modelKey, model, messages, responses, onUpdate }) {
-  // Check if message has images and model doesn't support vision
+export async function regenerateSingleModel({ modelKey, model, modelId, messages, responses, onUpdate }) {
   const lastMessage = messages[messages.length - 1]
   const hasImages = lastMessage?.images && lastMessage.images.length > 0
   
@@ -619,7 +597,7 @@ export async function regenerateSingleModel({ modelKey, model, messages, respons
   }
 
   const controller = new AbortController()
-  await streamResponse(modelKey, model, messages, responses, controller.signal, onUpdate)
+  await streamResponse(modelKey, model, modelId, messages, responses, controller.signal, onUpdate)
   return controller
 }
 
@@ -631,20 +609,16 @@ export async function generateChatTitle(messages, currentTitle = null) {
   const firstMsg = userMessages[0].content.toLowerCase().trim().replace(/[!.,?]/g, '')
   const isFirstGreeting = greetings.some(g => firstMsg === g || firstMsg.startsWith(g + ' '))
 
-  // If first message is greeting and only one message, return temporary title
   if (isFirstGreeting && userMessages.length === 1) {
     return 'New Conversation'
   }
 
-  // If current title is "New Conversation" and we now have 2+ messages, regenerate
   const shouldRegenerate = currentTitle === 'New Conversation' && userMessages.length >= 2
 
-  // Skip if we already have a proper title and don't need to regenerate
   if (currentTitle && currentTitle !== 'New Conversation' && !shouldRegenerate) {
     return currentTitle
   }
 
-  // Use second message if first was greeting, otherwise use first
   const messageForTitle = isFirstGreeting && userMessages.length >= 2 
     ? userMessages[1].content 
     : userMessages[0].content
@@ -674,7 +648,7 @@ export async function generateChatTitle(messages, currentTitle = null) {
       }
     }
   } catch (e) {
-    console.error('Failed to generate title:', e)
+    // Failed to generate title
   }
 
   return messageForTitle.substring(0, 40) + (messageForTitle.length > 40 ? '...' : '')
