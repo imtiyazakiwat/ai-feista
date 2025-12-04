@@ -144,6 +144,14 @@ const useStore = create(
       selectedImageModel: 'flux',
       thinkingMode: false,
       webSearchMode: false,
+      
+      // Avatars
+      customAvatars: [], // User-created avatars
+      activeAvatarId: null, // Currently active avatar (null = no avatar)
+      avatarChats: [], // Dedicated avatar chat sessions
+      
+      // Single Model Chats
+      singleModelChats: [], // Dedicated single model chat sessions
 
       // Getters
       models: MODELS,
@@ -354,6 +362,189 @@ const useStore = create(
       setThinkingMode: (enabled) => set({ thinkingMode: enabled }),
       toggleWebSearchMode: () => set(state => ({ webSearchMode: !state.webSearchMode })),
       setWebSearchMode: (enabled) => set({ webSearchMode: enabled }),
+      
+      // Single Model Mode
+      setSingleModelMode: (modelKey) => set({ singleModelMode: modelKey }),
+      clearSingleModelMode: () => set({ singleModelMode: null }),
+
+      // Avatar actions
+      setActiveAvatar: (avatarId) => set({ activeAvatarId: avatarId }),
+      clearActiveAvatar: () => set({ activeAvatarId: null }),
+      
+      addCustomAvatar: (avatar) => {
+        const newAvatar = {
+          ...avatar,
+          id: generateId(),
+          category: 'custom',
+          createdAt: Date.now()
+        }
+        set(state => ({
+          customAvatars: [...state.customAvatars, newAvatar]
+        }))
+        return newAvatar
+      },
+      
+      updateCustomAvatar: (avatarId, updates) => {
+        set(state => ({
+          customAvatars: state.customAvatars.map(a => 
+            a.id === avatarId ? { ...a, ...updates, updatedAt: Date.now() } : a
+          )
+        }))
+      },
+      
+      deleteCustomAvatar: (avatarId) => {
+        set(state => ({
+          customAvatars: state.customAvatars.filter(a => a.id !== avatarId),
+          activeAvatarId: state.activeAvatarId === avatarId ? null : state.activeAvatarId
+        }))
+      },
+
+      // Avatar Chat actions (dedicated chat sessions with avatars)
+      getAvatarChat: (chatId) => {
+        return get().avatarChats.find(c => c.id === chatId)
+      },
+      
+      createAvatarChat: (avatarId) => {
+        const chat = {
+          id: generateId(),
+          avatarId,
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
+        set(state => ({
+          avatarChats: [chat, ...state.avatarChats]
+        }))
+        return chat
+      },
+      
+      addAvatarMessage: (chatId, message) => {
+        set(state => ({
+          avatarChats: state.avatarChats.map(chat => 
+            chat.id === chatId 
+              ? { 
+                  ...chat, 
+                  messages: [...chat.messages, { ...message, timestamp: Date.now() }],
+                  updatedAt: Date.now()
+                }
+              : chat
+          )
+        }))
+      },
+      
+      updateAvatarResponse: (chatId, content, isStreaming) => {
+        set(state => {
+          const chat = state.avatarChats.find(c => c.id === chatId)
+          if (!chat) return state
+          
+          const messages = [...chat.messages]
+          const lastMsg = messages[messages.length - 1]
+          
+          // If last message is from assistant, update it
+          if (lastMsg?.role === 'assistant') {
+            messages[messages.length - 1] = { ...lastMsg, content, isStreaming }
+          } else {
+            // Add new assistant message
+            messages.push({ role: 'assistant', content, isStreaming, timestamp: Date.now() })
+          }
+          
+          return {
+            avatarChats: state.avatarChats.map(c => 
+              c.id === chatId ? { ...c, messages, updatedAt: Date.now() } : c
+            )
+          }
+        })
+      },
+      
+      deleteAvatarChat: (chatId) => {
+        set(state => ({
+          avatarChats: state.avatarChats.filter(c => c.id !== chatId)
+        }))
+      },
+      
+      getAvatarChatsByAvatar: (avatarId) => {
+        return get().avatarChats.filter(c => c.avatarId === avatarId)
+      },
+
+      // Single Model Chat actions
+      getSingleModelChat: (chatId) => {
+        return get().singleModelChats.find(c => c.id === chatId)
+      },
+      
+      createSingleModelChat: (modelKey) => {
+        const chat = {
+          id: generateId(),
+          modelKey,
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
+        set(state => ({
+          singleModelChats: [chat, ...state.singleModelChats]
+        }))
+        return chat
+      },
+      
+      addSingleModelMessage: (chatId, message) => {
+        set(state => ({
+          singleModelChats: state.singleModelChats.map(chat => 
+            chat.id === chatId 
+              ? { 
+                  ...chat, 
+                  messages: [...chat.messages, { ...message, timestamp: Date.now() }],
+                  updatedAt: Date.now()
+                }
+              : chat
+          )
+        }))
+      },
+      
+      updateSingleModelResponse: (chatId, content, thinking, isStreaming, extras = {}) => {
+        set(state => {
+          const chat = state.singleModelChats.find(c => c.id === chatId)
+          if (!chat) return state
+          
+          const messages = [...chat.messages]
+          const lastMsg = messages[messages.length - 1]
+          
+          // If last message is from assistant, update it
+          if (lastMsg?.role === 'assistant') {
+            messages[messages.length - 1] = { 
+              ...lastMsg, 
+              content, 
+              thinking,
+              isStreaming,
+              ...extras
+            }
+          } else {
+            // Add new assistant message
+            messages.push({ 
+              role: 'assistant', 
+              content, 
+              thinking,
+              isStreaming, 
+              timestamp: Date.now(),
+              ...extras
+            })
+          }
+          
+          return {
+            singleModelChats: state.singleModelChats.map(c => 
+              c.id === chatId ? { ...c, messages, updatedAt: Date.now() } : c
+            )
+          }
+        })
+      },
+      
+      deleteSingleModelChat: (chatId) => {
+        set(state => ({
+          singleModelChats: state.singleModelChats.filter(c => c.id !== chatId)
+        }))
+      },
+      
+      getSingleModelChatsByModel: (modelKey) => {
+        return get().singleModelChats.filter(c => c.modelKey === modelKey)
+      },
 
       updateCouncilResponse: (msgIndex, councilData) => {
         set(state => {
@@ -414,6 +605,10 @@ const useStore = create(
         selectedImageModel: state.selectedImageModel,
         thinkingMode: state.thinkingMode,
         webSearchMode: state.webSearchMode,
+        customAvatars: state.customAvatars,
+        activeAvatarId: state.activeAvatarId,
+        avatarChats: state.avatarChats,
+        singleModelChats: state.singleModelChats,
         chats: state.chats.map(chat => ({
           ...chat,
           messages: chat.messages.map(msg => ({

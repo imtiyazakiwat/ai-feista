@@ -1,6 +1,9 @@
 import { memo, useMemo, useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
+import { AvatarPanel } from './AvatarModal'
+import { DEFAULT_AVATARS } from '../data/avatars'
 
 // Chat item with 3-dot menu like AI Fiesta
 const ChatItem = memo(({ chat, isActive, onLoad, onDelete }) => {
@@ -45,13 +48,13 @@ const ChatItem = memo(({ chat, isActive, onLoad, onDelete }) => {
 
 
 // Navigation Section with proper SVG icons
-const NavSection = memo(({ icon, label, hasAdd, expanded, onToggle }) => (
+const NavSection = memo(({ icon, label, hasAdd, expanded, onToggle, onAddClick }) => (
   <div className="nav-section">
     <div className="nav-section-header" onClick={onToggle}>
       <span className="nav-section-icon">{icon}</span>
       <span className="nav-section-label">{label}</span>
       {hasAdd && (
-        <button className="nav-section-add" onClick={(e) => e.stopPropagation()}>
+        <button className="nav-section-add" onClick={(e) => { e.stopPropagation(); onAddClick?.() }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14"/>
           </svg>
@@ -72,16 +75,129 @@ const NavSection = memo(({ icon, label, hasAdd, expanded, onToggle }) => (
   </div>
 ))
 
+// Avatar Chat Item
+const AvatarChatItem = memo(({ chat, avatar, onClick, onDelete }) => {
+  const [showMenu, setShowMenu] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const lastMessage = chat.messages[chat.messages.length - 1]
+  const preview = lastMessage?.content?.substring(0, 30) || 'New conversation'
+
+  return (
+    <div className="avatar-chat-item" onClick={onClick}>
+      <div className="avatar-chat-item-icon">
+        {avatar?.image ? (
+          <img src={avatar.image} alt={avatar.name} />
+        ) : (
+          <span>{avatar?.emoji || '🤖'}</span>
+        )}
+      </div>
+      <div className="avatar-chat-item-info">
+        <span className="avatar-chat-item-name">{avatar?.name || 'Avatar'}</span>
+        <span className="avatar-chat-item-preview">{preview}...</span>
+      </div>
+      <div className="chat-item-menu" ref={menuRef}>
+        <button 
+          className="chat-item-menu-btn"
+          onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="2"/>
+            <circle cx="12" cy="12" r="2"/>
+            <circle cx="12" cy="19" r="2"/>
+          </svg>
+        </button>
+        {showMenu && (
+          <div className="chat-item-dropdown">
+            <button onClick={(e) => { e.stopPropagation(); onDelete(chat.id); setShowMenu(false) }}>
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
+// Single Model Chat Item
+const SingleModelChatItem = memo(({ chat, model, iconSrc, onClick, onDelete }) => {
+  const [showMenu, setShowMenu] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const lastMessage = chat.messages[chat.messages.length - 1]
+  const preview = lastMessage?.content?.substring(0, 30) || 'New conversation'
+
+  return (
+    <div className="avatar-chat-item" onClick={onClick}>
+      <div className="avatar-chat-item-icon">
+        <img 
+          src={iconSrc} 
+          alt={model?.name} 
+          className={model?.darkLogo ? 'dark-logo' : ''}
+          onError={(e) => { e.target.style.display = 'none' }}
+        />
+      </div>
+      <div className="avatar-chat-item-info">
+        <span className="avatar-chat-item-name">{model?.name || 'Model'}</span>
+        <span className="avatar-chat-item-preview">{preview}...</span>
+      </div>
+      <div className="chat-item-menu" ref={menuRef}>
+        <button 
+          className="chat-item-menu-btn"
+          onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="2"/>
+            <circle cx="12" cy="12" r="2"/>
+            <circle cx="12" cy="19" r="2"/>
+          </svg>
+        </button>
+        {showMenu && (
+          <div className="chat-item-dropdown">
+            <button onClick={(e) => { e.stopPropagation(); onDelete(chat.id); setShowMenu(false) }}>
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
 function Sidebar() {
+  const navigate = useNavigate()
   const { 
     chats, currentChatId, theme, sidebarOpen, sidebarCollapsed, searchQuery,
     createChat, loadChat, deleteChat, toggleTheme, closeSidebar, toggleSidebarCollapse,
-    setSearchQuery, getFilteredChats
+    setSearchQuery, getFilteredChats, avatarChats, deleteAvatarChat, customAvatars,
+    singleModelChats, deleteSingleModelChat, models
   } = useStore()
   
+  const allAvatars = [...DEFAULT_AVATARS, ...customAvatars]
   const searchInputRef = useRef(null)
   const [expandedSections, setExpandedSections] = useState({
-    avatars: false,
+    avatars: true,
+    singleModel: true,
     projects: false,
     games: false
   })
@@ -200,11 +316,92 @@ function Sidebar() {
                 <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
               </svg>
             }
-            label="Avatars" 
-            hasAdd 
+            label="Avatar Chats" 
+            hasAdd={true}
             expanded={expandedSections.avatars}
             onToggle={() => toggleSection('avatars')}
+            onAddClick={() => navigate('/avatars')}
           />
+          
+          {/* Avatar Chats List */}
+          {expandedSections.avatars && (
+            <div className="avatar-chats-list">
+              {avatarChats.length > 0 ? (
+                avatarChats.slice(0, 5).map(chat => {
+                  const avatar = allAvatars.find(a => a.id === chat.avatarId)
+                  return (
+                    <AvatarChatItem
+                      key={chat.id}
+                      chat={chat}
+                      avatar={avatar}
+                      onClick={() => {
+                        navigate(`/avatar/${chat.id}`)
+                        if (window.innerWidth < 768) closeSidebar()
+                      }}
+                      onDelete={deleteAvatarChat}
+                    />
+                  )
+                })
+              ) : (
+                <div className="avatar-chats-empty" onClick={() => navigate('/avatars')}>
+                  <span>✨</span>
+                  <p>Start chatting with avatars</p>
+                </div>
+              )}
+              {avatarChats.length > 5 && (
+                <button className="see-all-avatars-btn" onClick={() => navigate('/avatars')}>
+                  See all ({avatarChats.length})
+                </button>
+              )}
+            </div>
+          )}
+          
+          <NavSection 
+            icon={
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+              </svg>
+            }
+            label="Model Chats" 
+            hasAdd={false}
+            expanded={expandedSections.singleModel}
+            onToggle={() => toggleSection('singleModel')}
+          />
+          
+          {/* Single Model Chats List */}
+          {expandedSections.singleModel && (
+            <div className="avatar-chats-list">
+              {singleModelChats.length > 0 ? (
+                singleModelChats.slice(0, 5).map(chat => {
+                  const model = models[chat.modelKey]
+                  const iconSrc = theme === 'dark' && model?.iconDark ? model.iconDark : model?.icon
+                  return (
+                    <SingleModelChatItem
+                      key={chat.id}
+                      chat={chat}
+                      model={model}
+                      iconSrc={iconSrc}
+                      onClick={() => {
+                        navigate(`/chat/${chat.modelKey}/${chat.id}`)
+                        if (window.innerWidth < 768) closeSidebar()
+                      }}
+                      onDelete={deleteSingleModelChat}
+                    />
+                  )
+                })
+              ) : (
+                <div className="avatar-chats-empty">
+                  <span>💬</span>
+                  <p>No single model chats yet</p>
+                </div>
+              )}
+              {singleModelChats.length > 5 && (
+                <button className="see-all-avatars-btn">
+                  See all ({singleModelChats.length})
+                </button>
+              )}
+            </div>
+          )}
           
           <NavSection 
             icon={

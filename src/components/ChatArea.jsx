@@ -1,46 +1,20 @@
 import { memo, useRef, useEffect, forwardRef, useCallback, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 import Message from './Message'
 import { CouncilResponse } from './council'
 import ImageGenResponse from './ImageGenResponse'
 import InputArea from './InputArea'
 import ModelDropdown from './ModelDropdown'
+import { DEFAULT_AVATARS } from '../data/avatars'
 
 
 
-// Explore Avatars Data
-const EXPLORE_AVATARS = [
-  {
-    id: 'einstein',
-    name: 'Albert Einstein',
-    description: 'Revolutionized science, imagination beyond known limits.',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Einstein_1921_by_F_Schmutzer_-_restoration.jpg/220px-Einstein_1921_by_F_Schmutzer_-_restoration.jpg'
-  },
-  {
-    id: 'career-coach',
-    name: 'Career Coach',
-    description: 'Assists in achieving career goals with guidance and planning.',
-    image: null,
-    emoji: '💼'
-  },
-  {
-    id: 'creative-writer',
-    name: 'Creative Writer',
-    description: 'Helps craft compelling stories and creative content.',
-    image: null,
-    emoji: '✍️'
-  },
-  {
-    id: 'code-mentor',
-    name: 'Code Mentor',
-    description: 'Expert programming guidance and code review.',
-    image: null,
-    emoji: '👨‍💻'
-  }
-]
+
 
 const WelcomeModelTabs = memo(({ models, activeModels, toggleModel, theme }) => {
+  const navigate = useNavigate()
   const allModelKeys = Object.keys(models)
   
   return (
@@ -60,7 +34,11 @@ const WelcomeModelTabs = memo(({ models, activeModels, toggleModel, theme }) => 
               onError={(e) => { e.target.style.display = 'none' }}
             />
             <ModelDropdown modelKey={key} model={model} />
-            <button className="welcome-model-external" title="Open in new tab">
+            <button 
+              className="welcome-model-external" 
+              title={`Chat only with ${model.name}`}
+              onClick={() => navigate(`/chat/${key}`)}
+            >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
               </svg>
@@ -77,6 +55,21 @@ const WelcomeModelTabs = memo(({ models, activeModels, toggleModel, theme }) => 
 })
 
 const WelcomeScreen = memo(({ councilMode, toggleCouncilMode, models, activeModels, toggleModel, theme }) => {
+  const navigate = useNavigate()
+  const { createAvatarChat } = useStore()
+  
+  // Get first 4 avatars for explore section
+  const exploreAvatars = DEFAULT_AVATARS.slice(0, 4)
+  
+  const handleAvatarClick = (avatar) => {
+    const chat = createAvatarChat(avatar.id)
+    navigate(`/avatar/${chat.id}`)
+  }
+  
+  const handleSeeMore = () => {
+    navigate('/avatars')
+  }
+  
   return (
     <div className="welcome-screen">
       <div className="dotted-grid-bg"></div>
@@ -117,17 +110,21 @@ const WelcomeScreen = memo(({ councilMode, toggleCouncilMode, models, activeMode
       {/* Explore Section - positioned at bottom */}
       <div className="explore-section">
         <div className="explore-header">
-          <h3>Explore</h3>
-          <button className="see-more-btn">
-            See more
+          <h3>Explore Avatars</h3>
+          <button className="see-more-btn" onClick={handleSeeMore}>
+            See all
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 18l6-6-6-6"/>
             </svg>
           </button>
         </div>
         <div className="explore-cards">
-          {EXPLORE_AVATARS.map(avatar => (
-            <div key={avatar.id} className="explore-card">
+          {exploreAvatars.map(avatar => (
+            <div 
+              key={avatar.id} 
+              className="explore-card"
+              onClick={() => handleAvatarClick(avatar)}
+            >
               <div className="explore-avatar">
                 {avatar.image ? (
                   <img src={avatar.image} alt={avatar.name} />
@@ -138,6 +135,11 @@ const WelcomeScreen = memo(({ councilMode, toggleCouncilMode, models, activeMode
               <div className="explore-info">
                 <h4>{avatar.name}</h4>
                 <p>{avatar.description}</p>
+              </div>
+              <div className="explore-card-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
               </div>
             </div>
           ))}

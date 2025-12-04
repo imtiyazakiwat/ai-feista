@@ -91,7 +91,7 @@ async function callApi(model, messages, signal, extraParams = {}) {
   })
 }
 
-function buildConversationHistory(messages, responses, modelKey, supportsVision = true, isThinkingMode = false) {
+function buildConversationHistory(messages, responses, modelKey, supportsVision = true, isThinkingMode = false, avatarPrompt = null) {
   const history = []
   
   // Check if last message has image gen mode enabled
@@ -102,12 +102,13 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
   const skipSystemPrompt = isThinkingMode && (modelKey === 'chatgpt' || modelKey === 'claude')
   
   if (!skipSystemPrompt) {
-    // Add global system prompt with model-specific additions
-    const modelAddition = MODEL_SPECIFIC_PROMPTS[modelKey] || ''
+    // Use avatar prompt if provided, otherwise use global system prompt
+    const basePrompt = avatarPrompt || GLOBAL_SYSTEM_PROMPT
+    const modelAddition = avatarPrompt ? '' : (MODEL_SPECIFIC_PROMPTS[modelKey] || '')
     
     history.push({
       role: 'system',
-      content: GLOBAL_SYSTEM_PROMPT + modelAddition + imageGenAddition
+      content: basePrompt + modelAddition + imageGenAddition
     })
   }
 
@@ -311,7 +312,7 @@ const WEB_SEARCH_TIMEOUT_MS = 45000 // 45 seconds for web search mode (longer co
 
 // retryState: 0 = first try, 1 = retry same model, 2 = use fallback
 // showGrokWarning: boolean to show warning for Grok (doesn't expose reasoning)
-async function streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, retryState = 0, showGrokWarning = false) {
+async function streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, retryState = 0, showGrokWarning = false, avatarPrompt = null) {
   // Check if message has files or web search - use longer timeout
   const lastMsg = messages[messages.length - 1]
   const hasFiles = lastMsg?.files && lastMsg.files.length > 0
@@ -321,8 +322,8 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
   // Check if thinking mode is enabled
   const isThinkingMode = lastMsg?.thinkingMode
   
-  // Build conversation history with thinking mode flag
-  const history = buildConversationHistory(messages, responses, modelKey, model.supportsVision, isThinkingMode)
+  // Build conversation history with thinking mode flag and avatar prompt
+  const history = buildConversationHistory(messages, responses, modelKey, model.supportsVision, isThinkingMode, avatarPrompt)
   
   // Ensure we have at least one user message
   if (!history.some(m => m.role === 'user')) {
@@ -559,7 +560,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
   }
 }
 
-export async function sendToAllModels({ activeModels, models, messages, responses, controllers, onUpdate, getModelId }) {
+export async function sendToAllModels({ activeModels, models, messages, responses, controllers, onUpdate, getModelId, avatarPrompt = null }) {
   const lastMessage = messages[messages.length - 1]
   const hasImages = lastMessage?.images && lastMessage.images.length > 0
   const isThinkingMode = lastMessage?.thinkingMode
@@ -579,7 +580,7 @@ export async function sendToAllModels({ activeModels, models, messages, response
     
     const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
     
-    return streamResponse(modelKey, model, modelId, messages, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok')
+    return streamResponse(modelKey, model, modelId, messages, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok', avatarPrompt)
   })
 
   await Promise.allSettled(promises)
@@ -595,7 +596,8 @@ export async function sendToAllModelsWithSearch({
   onUpdate, 
   onSearchProgress,
   onSearchComplete,
-  getModelId 
+  getModelId,
+  avatarPrompt = null
 }) {
   const lastMessage = messages[messages.length - 1]
   const hasImages = lastMessage?.images && lastMessage.images.length > 0
@@ -674,7 +676,7 @@ export async function sendToAllModelsWithSearch({
     
     const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
     
-    return streamResponse(modelKey, model, modelId, messagesWithSearch, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok')
+    return streamResponse(modelKey, model, modelId, messagesWithSearch, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok', avatarPrompt)
   })
 
   await Promise.allSettled(promises)

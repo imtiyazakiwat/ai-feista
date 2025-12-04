@@ -15,6 +15,7 @@ function InputArea() {
   const fileInputRef = useRef(null)
   const inputRef = useRef(null)
   const plusMenuRef = useRef(null)
+  const isSendingRef = useRef(false) // Prevent double sends
   
   const {
     activeModels,
@@ -166,6 +167,10 @@ function InputArea() {
 
   const handleSend = useCallback(async () => {
     if ((!message.trim() && images.length === 0 && files.length === 0) || activeModels.length === 0) return
+    
+    // Prevent double sends
+    if (isSendingRef.current) return
+    isSendingRef.current = true
 
     const text = message.trim() || (images.length > 0 ? 'What is in this image?' : 'Analyze this file')
     const generateCmd = parseGenerateCommand(text)
@@ -366,6 +371,9 @@ function InputArea() {
         }
       }
     }
+    
+    // Reset send lock
+    isSendingRef.current = false
   }, [message, images, files, imageGenMode, selectedImageModel, councilMode, webSearchMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
 
   const handleKeyDown = useCallback((e) => {
