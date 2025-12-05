@@ -123,11 +123,11 @@ function SingleModelChat() {
   const abortControllerRef = useRef(null)
   const thinkingStartRef = useRef(null)
   const isSendingRef = useRef(false) // Prevent double sends
-  
-  const { 
-    models, 
-    theme, 
-    getModelId, 
+
+  const {
+    models,
+    theme,
+    getModelId,
     selectedVariants,
     getVariantName,
     getSingleModelChat,
@@ -135,18 +135,18 @@ function SingleModelChat() {
     addSingleModelMessage,
     updateSingleModelResponse
   } = useStore()
-  
+
   const model = models[modelKey]
   const modelTheme = MODEL_THEMES[modelKey] || MODEL_THEMES.chatgpt
   const iconSrc = theme === 'dark' && model?.iconDark ? model.iconDark : model?.icon
-  
+
   // Get current variant name for dynamic display
   const variantName = getVariantName(modelKey)
-  
+
   // Get or create chat
   const chat = chatId ? getSingleModelChat(chatId) : null
   const messages = chat?.messages || []
-  
+
   // Check if current variant supports thinking
   const currentVariantId = selectedVariants[modelKey] || model?.defaultVariant
   const currentVariant = model?.variants?.find(v => v.id === currentVariantId)
@@ -176,7 +176,7 @@ function SingleModelChat() {
 
   // Stream response with thinking support - using ref to avoid stale closures
   const streamResponseRef = useRef(null)
-  
+
   streamResponseRef.current = async (userMessage, currentChatId) => {
     setIsLoading(true)
     setIsStreaming(false)
@@ -185,10 +185,19 @@ function SingleModelChat() {
     setThinkingTime(null)
     thinkingStartRef.current = null
     abortControllerRef.current = new AbortController()
-    
+
     const API_URL = 'https://unifiedapi.vercel.app/v1/chat/completions'
     const API_KEY = 'sk-0000d80ad3c542d29120527e66963a2e'
-    
+
+    // Get Puter auth token if available
+    const getPuterToken = () => {
+      if (typeof window !== 'undefined' && window.puter) {
+        return window.puter.authToken || window.puter.auth?.getToken?.() || window.puter.token || null
+      }
+      return null
+    }
+    const puterToken = getPuterToken()
+
     // Get model ID - use thinking variant if thinking mode enabled
     let modelId = getModelId(modelKey)
     if (thinkingMode && supportsThinking) {
@@ -197,11 +206,11 @@ function SingleModelChat() {
         modelId = thinkingVariant.id
       }
     }
-    
+
     // Get current messages from store
     const currentChat = useStore.getState().getSingleModelChat(currentChatId)
     const currentMessages = currentChat?.messages || []
-    
+
     // Build conversation history - exclude the message we just added
     const apiMessages = currentMessages
       .filter(m => !m.isStreaming)
@@ -209,7 +218,7 @@ function SingleModelChat() {
         role: m.role,
         content: m.content
       }))
-    
+
     // Add thinking parameters for supported models
     const extraParams = {}
     if (thinkingMode && supportsThinking) {
@@ -220,13 +229,19 @@ function SingleModelChat() {
       }
     }
 
+    // Build headers with optional Puter token
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({
           model: modelId,
           messages: apiMessages,
@@ -265,7 +280,7 @@ function SingleModelChat() {
             try {
               const data = JSON.parse(trimmedLine.slice(6))
               const delta = data.choices?.[0]?.delta
-              
+
               // Handle reasoning_content (thinking)
               if (delta?.reasoning_content) {
                 if (!thinkingStartRef.current) {
@@ -274,7 +289,7 @@ function SingleModelChat() {
                 fullThinking += delta.reasoning_content
                 setThinkingContent(fullThinking)
               }
-              
+
               // Handle regular content
               if (delta?.content) {
                 // Record thinking end time when content starts
@@ -284,7 +299,7 @@ function SingleModelChat() {
                   finalThinkingTime = `${duration}s`
                   setThinkingTime(finalThinkingTime)
                 }
-                
+
                 fullContent += delta.content
                 setCurrentResponse(fullContent)
               }
@@ -306,7 +321,7 @@ function SingleModelChat() {
       updateSingleModelResponse(currentChatId, fullContent, fullThinking, false, {
         thinkingTime: finalThinkingTime
       })
-      
+
       setCurrentResponse('')
       setThinkingContent('')
     } catch (error) {
@@ -328,26 +343,26 @@ function SingleModelChat() {
     if (!message.trim()) return
     if (isStreaming || isLoading) return
     if (isSendingRef.current) return
-    
+
     // Set lock immediately
     isSendingRef.current = true
-    
+
     try {
       const userMessage = message.trim()
       setMessage('')
-      
+
       let currentChatId = chatId
-      
+
       // Create new chat if needed
       if (!currentChatId) {
         const newChat = createSingleModelChat(modelKey)
         currentChatId = newChat.id
         navigate(`/chat/${modelKey}/${newChat.id}`, { replace: true })
       }
-      
+
       // Add user message to store
       addSingleModelMessage(currentChatId, { role: 'user', content: userMessage })
-      
+
       // Stream response using ref to get latest function
       await streamResponseRef.current(userMessage, currentChatId)
     } finally {
@@ -402,10 +417,10 @@ function SingleModelChat() {
       <header className="single-model-header-bar">
         <Link to="/" className="single-model-back-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </Link>
-        
+
         <div className="single-model-title">
           <img
             src={iconSrc}
@@ -418,14 +433,14 @@ function SingleModelChat() {
 
         {/* Thinking toggle */}
         {supportsThinking && (
-          <button 
+          <button
             className={`single-model-thinking-btn ${thinkingMode ? 'active' : ''}`}
             onClick={toggleThinking}
             title={thinkingMode ? 'Disable thinking' : 'Enable thinking'}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 6v6l4 2"/>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
             </svg>
             <span>Think</span>
           </button>
@@ -453,9 +468,9 @@ function SingleModelChat() {
         ) : (
           <div className="single-model-messages-list">
             {messages.filter(m => !m.isStreaming).map((msg, idx) => (
-              <MessageBubble 
-                key={idx} 
-                message={msg} 
+              <MessageBubble
+                key={idx}
+                message={msg}
                 model={model}
                 iconSrc={iconSrc}
               />
@@ -466,9 +481,9 @@ function SingleModelChat() {
             )}
             {/* Current streaming response */}
             {(currentResponse || thinkingContent) && (
-              <MessageBubble 
-                message={{ 
-                  role: 'assistant', 
+              <MessageBubble
+                message={{
+                  role: 'assistant',
                   content: currentResponse,
                   thinking: thinkingContent
                 }}
@@ -490,11 +505,11 @@ function SingleModelChat() {
           {modelKey === 'grok' && (
             <button className="single-model-attach-btn" title="Attach">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
               </svg>
             </button>
           )}
-          
+
           <textarea
             ref={inputRef}
             value={message}
@@ -504,26 +519,26 @@ function SingleModelChat() {
             rows={1}
             disabled={isGenerating}
           />
-          
+
           {/* Model selector for Grok */}
           {modelKey === 'grok' && (
             <div className="single-model-selector">
               <ModelDropdown modelKey={modelKey} model={model} />
             </div>
           )}
-          
-          <button 
+
+          <button
             className={`single-model-send-btn ${isGenerating ? 'stop' : ''}`}
             onClick={isGenerating ? handleStop : handleSend}
             disabled={!message.trim() && !isGenerating}
           >
             {isGenerating ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14v-4H7l5-6v4h4l-5 6z"/>
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14v-4H7l5-6v4h4l-5 6z" />
               </svg>
             )}
           </button>
@@ -535,7 +550,7 @@ function SingleModelChat() {
 
 // Loading skeleton component
 const LoadingSkeleton = memo(({ model, iconSrc }) => (
-  <motion.div 
+  <motion.div
     className="single-model-message assistant"
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
@@ -561,20 +576,20 @@ const LoadingSkeleton = memo(({ model, iconSrc }) => (
 // Thinking section component
 const ThinkingSection = memo(({ thinking, isActive, thinkingTime }) => {
   const [isExpanded, setIsExpanded] = useState(true)
-  
+
   if (!thinking) return null
-  
+
   return (
     <div className={`thinking-section ${isActive ? 'active' : ''} ${isExpanded ? 'expanded' : 'collapsed'}`}>
       <button className="thinking-toggle" onClick={() => setIsExpanded(!isExpanded)}>
         <svg className="thinking-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M9 18l6-6-6-6"/>
+          <path d="M9 18l6-6-6-6" />
         </svg>
         <span>
           {isActive ? (
             <>
               <svg className="thinking-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
               Thinking...
             </>
@@ -595,9 +610,9 @@ const ThinkingSection = memo(({ thinking, isActive, thinkingTime }) => {
 // Message bubble component
 const MessageBubble = memo(({ message, model, iconSrc, isStreaming, thinkingTime }) => {
   const isUser = message.role === 'user'
-  
+
   return (
-    <motion.div 
+    <motion.div
       className={`single-model-message ${isUser ? 'user' : 'assistant'} ${message.error ? 'error' : ''}`}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -613,7 +628,7 @@ const MessageBubble = memo(({ message, model, iconSrc, isStreaming, thinkingTime
           />
         </div>
       )}
-      
+
       <div className="single-model-message-content">
         {isUser ? (
           <p>{message.content}</p>
@@ -621,13 +636,13 @@ const MessageBubble = memo(({ message, model, iconSrc, isStreaming, thinkingTime
           <>
             {/* Thinking section */}
             {message.thinking && (
-              <ThinkingSection 
-                thinking={message.thinking} 
+              <ThinkingSection
+                thinking={message.thinking}
                 isActive={isStreaming && !message.content}
                 thinkingTime={message.thinkingTime || thinkingTime}
               />
             )}
-            
+
             {/* Main content */}
             {message.content ? (
               <>
@@ -643,7 +658,7 @@ const MessageBubble = memo(({ message, model, iconSrc, isStreaming, thinkingTime
                 <span className="dot" />
               </div>
             ) : null}
-            
+
             {/* Stopped indicator */}
             {message.stopped && (
               <div className="stopped-indicator">Generation stopped</div>

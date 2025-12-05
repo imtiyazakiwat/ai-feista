@@ -2,6 +2,14 @@
 const DIRECT_API_URL = 'https://unifiedapi.vercel.app/v1/chat/completions'
 const API_KEY = 'sk-0000d80ad3c542d29120527e66963a2e'
 
+// Get Puter auth token if available
+function getPuterToken() {
+  if (typeof window !== 'undefined' && window.puter) {
+    return window.puter.authToken || window.puter.auth?.getToken?.() || window.puter.token || null
+  }
+  return null
+}
+
 // Council models - using the same latest models as AI Fiesta
 const COUNCIL_MODELS = [
   'openrouter:openai/gpt-5.1',           // ChatGPT (latest)
@@ -17,24 +25,31 @@ const CHAIRMAN_MODEL = 'openrouter:google/gemini-2.5-pro'
 async function queryModel(model, messages, timeout = 120000, externalSignal = null) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
-  
+
   // If external signal is aborted, abort this request too
   if (externalSignal?.aborted) {
     clearTimeout(timeoutId)
     return null
   }
-  
+
   // Listen for external abort
   const abortHandler = () => controller.abort()
   externalSignal?.addEventListener('abort', abortHandler)
 
+  // Build headers with optional Puter token
+  const puterToken = getPuterToken()
+  const headers = {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+  if (puterToken) {
+    headers['X-Puter-Token'] = puterToken
+  }
+
   try {
     const response = await fetch(DIRECT_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({ model, messages, stream: false }),
       signal: controller.signal
     })
@@ -65,10 +80,10 @@ async function queryModel(model, messages, timeout = 120000, externalSignal = nu
 async function queryModelsParallel(models, messages, signal = null) {
   // Check if already aborted
   if (signal?.aborted) return {}
-  
+
   const promises = models.map(model => queryModel(model, messages, 120000, signal))
   const responses = await Promise.all(promises)
-  
+
   const result = {}
   models.forEach((model, idx) => {
     result[model] = responses[idx]
@@ -79,9 +94,9 @@ async function queryModelsParallel(models, messages, signal = null) {
 // Stage 1: Collect individual responses from all council models
 async function stage1CollectResponses(userQuery, onProgress, signal = null) {
   if (signal?.aborted) return []
-  
+
   onProgress?.({ stage: 1, status: 'start' })
-  
+
   const messages = [{ role: 'user', content: userQuery }]
   const responses = await queryModelsParallel(COUNCIL_MODELS, messages, signal)
 
@@ -104,12 +119,12 @@ async function stage1CollectResponses(userQuery, onProgress, signal = null) {
 // Stage 2: Each model ranks the anonymized responses
 async function stage2CollectRankings(userQuery, stage1Results, onProgress, signal = null) {
   if (signal?.aborted) return { stage2Results: [], labelToModel: {} }
-  
+
   onProgress?.({ stage: 2, status: 'start' })
 
   // Create anonymized labels (Response A, B, C, etc.)
   const labels = stage1Results.map((_, i) => String.fromCharCode(65 + i))
-  
+
   // Create mapping from label to model name
   const labelToModel = {}
   labels.forEach((label, idx) => {
@@ -117,7 +132,7 @@ async function stage2CollectRankings(userQuery, stage1Results, onProgress, signa
   })
 
   // Build the ranking prompt
-  const responsesText = stage1Results.map((result, idx) => 
+  const responsesText = stage1Results.map((result, idx) =>
     `Response ${labels[idx]}:\n${result.response}`
   ).join('\n\n')
 
@@ -170,27 +185,27 @@ Now provide your evaluation and ranking:`
     }
   }
 
-  onProgress?.({ 
-    stage: 2, 
-    status: 'complete', 
+  onProgress?.({
+    stage: 2,
+    status: 'complete',
     data: stage2Results,
     metadata: { label_to_model: labelToModel }
   })
-  
+
   return { stage2Results, labelToModel }
 }
 
 // Stage 3: Chairman synthesizes final response
 async function stage3Synthesize(userQuery, stage1Results, stage2Results, onProgress, signal = null) {
   if (signal?.aborted) return { model: '', response: 'Generation stopped.' }
-  
+
   onProgress?.({ stage: 3, status: 'start' })
 
-  const stage1Text = stage1Results.map(result => 
+  const stage1Text = stage1Results.map(result =>
     `Model: ${result.model}\nResponse: ${result.response}`
   ).join('\n\n')
 
-  const stage2Text = stage2Results.map(result => 
+  const stage2Text = stage2Results.map(result =>
     `Model: ${result.model}\nRanking: ${result.ranking}`
   ).join('\n\n')
 
@@ -247,7 +262,7 @@ function calculateAggregateRankings(stage2Results, labelToModel) {
 
   for (const ranking of stage2Results) {
     const parsedRanking = ranking.parsed_ranking || parseRankingFromText(ranking.ranking)
-    
+
     parsedRanking.forEach((label, position) => {
       if (labelToModel[label]) {
         const modelName = labelToModel[label]
@@ -282,14 +297,14 @@ export async function runCouncil(userQuery, onProgress, signal = null) {
     if (signal?.aborted) {
       return { error: 'Generation stopped.', stage1: [], stage2: [], stage3: null, metadata: {}, stopped: true }
     }
-    
+
     // Stage 1
     const stage1Results = await stage1CollectResponses(userQuery, onProgress, signal)
-    
+
     if (signal?.aborted) {
       return { error: 'Generation stopped.', stage1: stage1Results, stage2: [], stage3: null, metadata: {}, stopped: true }
     }
-    
+
     if (stage1Results.length === 0) {
       return {
         error: 'All models failed to respond. Please try again.',
@@ -302,8 +317,8 @@ export async function runCouncil(userQuery, onProgress, signal = null) {
 
     // Stage 2
     const { stage2Results, labelToModel } = await stage2CollectRankings(
-      userQuery, 
-      stage1Results, 
+      userQuery,
+      stage1Results,
       onProgress,
       signal
     )

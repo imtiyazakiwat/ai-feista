@@ -16,7 +16,7 @@ function InputArea() {
   const inputRef = useRef(null)
   const plusMenuRef = useRef(null)
   const isSendingRef = useRef(false) // Prevent double sends
-  
+
   const {
     activeModels,
     models,
@@ -100,10 +100,10 @@ function InputArea() {
   // Combined handler for attach files (images + documents)
   const handleAttachFiles = useCallback(async (fileList) => {
     if (!fileList || fileList.length === 0) return
-    
+
     const imageFiles = []
     const docFiles = []
-    
+
     Array.from(fileList).forEach(file => {
       if (file.type.startsWith('image/')) {
         imageFiles.push(file)
@@ -111,12 +111,12 @@ function InputArea() {
         docFiles.push(file)
       }
     })
-    
+
     // Upload images
     if (imageFiles.length > 0) {
       await handleImageUpload(imageFiles)
     }
-    
+
     // Process documents
     if (docFiles.length > 0) {
       await handleFileUpload(docFiles)
@@ -167,7 +167,7 @@ function InputArea() {
 
   const handleSend = useCallback(async () => {
     if ((!message.trim() && images.length === 0 && files.length === 0) || activeModels.length === 0) return
-    
+
     // Prevent double sends
     if (isSendingRef.current) return
     isSendingRef.current = true
@@ -175,7 +175,7 @@ function InputArea() {
     const text = message.trim() || (images.length > 0 ? 'What is in this image?' : 'Analyze this file')
     const generateCmd = parseGenerateCommand(text)
     const shouldGenerateImage = generateCmd || imageGenMode
-    
+
     const currentImages = [...images]
     const currentFiles = [...files]
     const currentImageGenMode = imageGenMode
@@ -193,9 +193,9 @@ function InputArea() {
     }
 
     const msgIndex = chat.messages.length
-    addMessage({ 
-      role: 'user', 
-      content: text, 
+    addMessage({
+      role: 'user',
+      content: text,
       images: currentImages.length > 0 ? currentImages : undefined,
       files: currentFiles.length > 0 ? currentFiles : undefined,
       imageGenMode: currentImageGenMode,
@@ -210,7 +210,7 @@ function InputArea() {
     if (shouldGenerateImage) {
       let imagePrompt = text
       let imageModel = selectedImageModel
-      
+
       if (generateCmd) {
         if (generateCmd.error) {
           updateImageResponse(msgIndex, {
@@ -246,7 +246,7 @@ function InputArea() {
       }
 
       setGenerating(false)
-      
+
       const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
       if (finalChat && !finalChat.title) {
         const title = await generateChatTitle(finalChat.messages, finalChat.title)
@@ -260,7 +260,7 @@ function InputArea() {
     if (currentCouncilMode) {
       const councilController = new AbortController()
       setAbortControllers([councilController])
-      
+
       updateCouncilResponse(msgIndex, {
         loading: { stage1: true, stage2: false, stage3: false },
         stage1: null,
@@ -272,9 +272,9 @@ function InputArea() {
       await runCouncil(text, (progress) => {
         // Check if aborted before updating
         if (councilController.signal.aborted) return
-        
+
         const currentData = useStore.getState().chats.find(c => c.id === chat.id)?.councilResponses?.[msgIndex] || {}
-        
+
         if (progress.status === 'start') {
           updateCouncilResponse(msgIndex, {
             ...currentData,
@@ -342,6 +342,7 @@ function InputArea() {
           getModelId
         })
       } else {
+        // Use Vercel API - Puter token is passed via header automatically
         await sendToAllModels({
           activeModels,
           models,
@@ -357,24 +358,25 @@ function InputArea() {
 
       setGenerating(false)
       setAbortControllers([])
-    }
 
-    const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
-    if (finalChat && finalChat.messages.length >= 1) {
-      const needsTitle = !finalChat.title || 
-        (finalChat.title === 'New Conversation' && finalChat.messages.length >= 2)
-      
-      if (needsTitle) {
-        const title = await generateChatTitle(finalChat.messages, finalChat.title)
-        if (title && title !== finalChat.title) {
-          updateChatTitle(finalChat.id, title)
+      const finalChat = useStore.getState().chats.find(c => c.id === chat.id)
+      if (finalChat && finalChat.messages.length >= 1) {
+        const needsTitle = !finalChat.title ||
+          (finalChat.title === 'New Conversation' && finalChat.messages.length >= 2)
+
+        if (needsTitle) {
+          // Use original API for title generation - Puter token passed via header
+          const title = await generateChatTitle(finalChat.messages, finalChat.title)
+          if (title && title !== finalChat.title) {
+            updateChatTitle(finalChat.id, title)
+          }
         }
       }
     }
-    
+
     // Reset send lock
     isSendingRef.current = false
-  }, [message, images, files, imageGenMode, selectedImageModel, councilMode, webSearchMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse])
+  }, [message, images, files, imageGenMode, selectedImageModel, councilMode, webSearchMode, activeModels, models, getCurrentChat, createChat, addMessage, updateResponse, updateChatTitle, setGenerating, setAbortControllers, updateCouncilResponse, updateWebSearchResponse])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -395,6 +397,7 @@ function InputArea() {
     if (!message.trim() || enhancing) return
     setEnhancing(true)
     try {
+      // Use original API for prompt enhancement - Puter token passed via header
       const enhanced = await enhancePrompt(message.trim())
       if (enhanced) {
         setMessage(enhanced)
@@ -422,7 +425,7 @@ function InputArea() {
     <div className={`input-area ${!hasMessages ? 'centered' : ''}`}>
       <AnimatePresence>
         {(images.length > 0 || files.length > 0) && (
-          <motion.div 
+          <motion.div
             className="attachments-preview"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -433,7 +436,7 @@ function InputArea() {
                 <img src={url} alt={`Upload ${idx + 1}`} />
                 <button className="remove-attachment" onClick={() => removeImage(idx)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
+                    <path d="M18 6L6 18M6 6l12 12" />
                   </svg>
                 </button>
               </div>
@@ -444,7 +447,7 @@ function InputArea() {
                 <span className="file-name">{file.name}</span>
                 <button className="remove-attachment" onClick={() => removeFile(idx)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
+                    <path d="M18 6L6 18M6 6l12 12" />
                   </svg>
                 </button>
               </div>
@@ -452,7 +455,7 @@ function InputArea() {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       <div className="input-container">
         <input
           type="file"
@@ -478,7 +481,7 @@ function InputArea() {
           multiple
           style={{ display: 'none' }}
         />
-        
+
         {/* Plus Menu Button */}
         <div className="plus-menu-container" ref={plusMenuRef}>
           <motion.button
@@ -488,10 +491,10 @@ function InputArea() {
             whileTap={{ scale: 0.95 }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14"/>
+              <path d="M12 5v14M5 12h14" />
             </svg>
           </motion.button>
-          
+
           <AnimatePresence>
             {showPlusMenu && (
               <motion.div
@@ -503,14 +506,14 @@ function InputArea() {
               >
                 <button className="plus-menu-item" onClick={() => { document.getElementById('attachInput')?.click() }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                   </svg>
                   <span>Attach Files</span>
                 </button>
                 <button className={`plus-menu-item ${thinkingMode ? 'active' : ''}`} onClick={() => { toggleThinkingMode(); setShowPlusMenu(false) }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 6v6l4 2"/>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
                   </svg>
                   <span>Think Mode {thinkingMode ? '✓' : ''}</span>
                 </button>
@@ -519,45 +522,45 @@ function InputArea() {
                 </div>
                 <button className="plus-menu-item" onClick={() => { toggleImageGenMode(); setShowPlusMenu(false) }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
                   </svg>
                   <span>Image</span>
                 </button>
                 <button className="plus-menu-item" onClick={() => setShowPlusMenu(false)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
                   </svg>
                   <span>Document</span>
                 </button>
                 <button className={`plus-menu-item ${webSearchMode ? 'active' : ''}`} onClick={() => { toggleWebSearchMode(); setShowPlusMenu(false) }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="2" y1="12" x2="22" y2="12"/>
-                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
                   </svg>
                   <span>Web Search {webSearchMode ? '✓' : ''}</span>
                 </button>
                 <button className="plus-menu-item has-arrow" onClick={() => setShowPlusMenu(false)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-                    <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+                    <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
                   </svg>
                   <span>Deep Research</span>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M7 17L17 7M17 7H7M17 7v10"/>
+                    <path d="M7 17L17 7M17 7H7M17 7v10" />
                   </svg>
                 </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-        
+
         {/* Search Toggle Button - like real AI Fiesta */}
         <motion.button
           className={`search-toggle-btn ${webSearchMode ? 'active' : ''}`}
@@ -567,13 +570,13 @@ function InputArea() {
           title={webSearchMode ? 'Disable web search' : 'Enable web search'}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
           </svg>
           <span>Search</span>
         </motion.button>
-        
+
         <input
           ref={inputRef}
           type="text"
@@ -585,7 +588,7 @@ function InputArea() {
           onPaste={handlePaste}
           autoComplete="off"
         />
-        
+
         {/* Microphone button */}
         <motion.button
           className="mic-btn"
@@ -594,13 +597,13 @@ function InputArea() {
           title="Voice input"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
-            <path d="M19 10v2a7 7 0 01-14 0v-2"/>
-            <line x1="12" y1="19" x2="12" y2="23"/>
-            <line x1="8" y1="23" x2="16" y2="23"/>
+            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+            <path d="M19 10v2a7 7 0 01-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
         </motion.button>
-        
+
         <motion.button
           className={`send-btn ${isGenerating ? 'generating' : ''}`}
           onClick={isGenerating ? stopGenerating : handleSend}
@@ -610,55 +613,55 @@ function InputArea() {
         >
           {isGenerating ? (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
+              <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
           ) : (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
           )}
         </motion.button>
       </div>
-      
+
       {/* Quick Action Buttons - shown on welcome screen */}
       {!hasMessages && (
         <div className="quick-actions">
-          <button 
+          <button
             className={`quick-action-btn ${thinkingMode ? 'active' : ''}`}
             onClick={toggleThinkingMode}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 6v6l4 2"/>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
             </svg>
             <span>Think</span>
           </button>
-          <button 
+          <button
             className={`quick-action-btn ${webSearchMode ? 'active' : ''}`}
             onClick={toggleWebSearchMode}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
             </svg>
             <span>Web Search</span>
           </button>
-          <button 
+          <button
             className={`quick-action-btn ${imageGenMode ? 'active' : ''}`}
             onClick={toggleImageGenMode}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
             </svg>
             <span>Generate Image</span>
           </button>
         </div>
       )}
-      
+
       {hasMessages && (
         <div className="keyboard-hints">
           <span>Enter send</span>

@@ -14,7 +14,7 @@ function AvatarChat() {
   const inputRef = useRef(null)
   const messagesEndRef = useRef(null)
   const abortControllerRef = useRef(null)
-  
+
   const {
     theme,
     customAvatars,
@@ -43,13 +43,22 @@ function AvatarChat() {
   // Stream response from Claude Sonnet 4.5
   const streamResponse = useCallback(async (userMessage, chatData) => {
     if (!avatar) return
-    
+
     setIsStreaming(true)
     abortControllerRef.current = new AbortController()
-    
+
     const API_URL = 'https://unifiedapi.vercel.app/v1/chat/completions'
     const API_KEY = 'sk-0000d80ad3c542d29120527e66963a2e'
-    
+
+    // Get Puter auth token if available
+    const getPuterToken = () => {
+      if (typeof window !== 'undefined' && window.puter) {
+        return window.puter.authToken || window.puter.auth?.getToken?.() || window.puter.token || null
+      }
+      return null
+    }
+    const puterToken = getPuterToken()
+
     // Build conversation history
     const messages = [
       { role: 'system', content: avatar.systemPrompt },
@@ -60,13 +69,19 @@ function AvatarChat() {
       { role: 'user', content: userMessage }
     ]
 
+    // Build headers with optional Puter token
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({
           model: 'openrouter:anthropic/claude-sonnet-4.5',
           messages,
@@ -123,20 +138,20 @@ function AvatarChat() {
   // Send message
   const handleSend = useCallback(async () => {
     if (!message.trim() || isStreaming || !avatar) return
-    
+
     const userMessage = message.trim()
     setMessage('')
-    
+
     let currentChat = chat
     if (!currentChat) {
       // Create new chat if doesn't exist
       currentChat = createAvatarChat(avatar.id)
       navigate(`/avatar/${currentChat.id}`, { replace: true })
     }
-    
+
     // Add user message
     addAvatarMessage(currentChat.id, { role: 'user', content: userMessage })
-    
+
     // Stream response
     const updatedChat = useStore.getState().getAvatarChat(currentChat.id)
     await streamResponse(userMessage, updatedChat)
@@ -176,10 +191,10 @@ function AvatarChat() {
       <header className="avatar-chat-header">
         <Link to="/" className="avatar-back-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </Link>
-        
+
         <div className="avatar-chat-title">
           <div className="avatar-chat-icon">
             {avatar?.image ? (
@@ -195,9 +210,9 @@ function AvatarChat() {
 
         <button className="avatar-menu-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="1"/>
-            <circle cx="19" cy="12" r="1"/>
-            <circle cx="5" cy="12" r="1"/>
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
           </svg>
         </button>
       </header>
@@ -215,18 +230,18 @@ function AvatarChat() {
             </div>
             <h2>Chat with {avatar?.name}</h2>
             <p>{avatar?.description}</p>
-            
+
             <div className="avatar-suggestions">
-              <SuggestionChip 
-                text={getSuggestion(avatar, 0)} 
+              <SuggestionChip
+                text={getSuggestion(avatar, 0)}
                 onClick={() => setMessage(getSuggestion(avatar, 0))}
               />
-              <SuggestionChip 
-                text={getSuggestion(avatar, 1)} 
+              <SuggestionChip
+                text={getSuggestion(avatar, 1)}
                 onClick={() => setMessage(getSuggestion(avatar, 1))}
               />
-              <SuggestionChip 
-                text={getSuggestion(avatar, 2)} 
+              <SuggestionChip
+                text={getSuggestion(avatar, 2)}
                 onClick={() => setMessage(getSuggestion(avatar, 2))}
               />
             </div>
@@ -234,9 +249,9 @@ function AvatarChat() {
         ) : (
           <div className="avatar-messages-list">
             {chat.messages.map((msg, idx) => (
-              <MessageBubble 
-                key={idx} 
-                message={msg} 
+              <MessageBubble
+                key={idx}
+                message={msg}
                 avatar={avatar}
                 isLast={idx === chat.messages.length - 1}
                 isStreaming={isStreaming && idx === chat.messages.length - 1 && msg.role === 'assistant'}
@@ -259,19 +274,19 @@ function AvatarChat() {
             rows={1}
             disabled={isStreaming}
           />
-          
-          <button 
+
+          <button
             className={`avatar-send-btn ${isStreaming ? 'stop' : ''}`}
             onClick={isStreaming ? handleStop : handleSend}
             disabled={!message.trim() && !isStreaming}
           >
             {isStreaming ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
             )}
           </button>
@@ -287,9 +302,9 @@ function AvatarChat() {
 // Message bubble component
 const MessageBubble = memo(({ message, avatar, isLast, isStreaming }) => {
   const isUser = message.role === 'user'
-  
+
   return (
-    <motion.div 
+    <motion.div
       className={`avatar-message ${isUser ? 'user' : 'assistant'}`}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -304,7 +319,7 @@ const MessageBubble = memo(({ message, avatar, isLast, isStreaming }) => {
           )}
         </div>
       )}
-      
+
       <div className="avatar-message-content">
         {isUser ? (
           <p>{message.content}</p>
@@ -417,13 +432,13 @@ function getSuggestion(avatar, index) {
       "How do I find my first customers?"
     ]
   }
-  
+
   const avatarSuggestions = suggestions[avatar?.id] || [
     "Tell me about yourself",
     "What can you help me with?",
     "Share some wisdom"
   ]
-  
+
   return avatarSuggestions[index] || avatarSuggestions[0]
 }
 
@@ -433,9 +448,9 @@ export const AvatarSelection = memo(() => {
   const { customAvatars, createAvatarChat, theme } = useStore()
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
-  
+
   const allAvatars = [...DEFAULT_AVATARS, ...customAvatars]
-  
+
   const categories = [
     { id: 'all', name: 'All', emoji: '✨' },
     { id: 'historical', name: 'Historical', emoji: '🏛️' },
@@ -445,10 +460,10 @@ export const AvatarSelection = memo(() => {
     { id: 'wellness', name: 'Wellness', emoji: '🌿' },
     { id: 'custom', name: 'My Avatars', emoji: '⭐' }
   ]
-  
+
   const filteredAvatars = allAvatars.filter(avatar => {
     const matchesCategory = selectedCategory === 'all' || avatar.category === selectedCategory
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       avatar.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       avatar.description?.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesCategory && matchesSearch
@@ -464,7 +479,7 @@ export const AvatarSelection = memo(() => {
       <header className="avatar-selection-header">
         <Link to="/" className="avatar-back-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </Link>
         <h1>Choose an Avatar</h1>
@@ -475,8 +490,8 @@ export const AvatarSelection = memo(() => {
       <div className="avatar-search-container">
         <div className="avatar-search-input">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
           </svg>
           <input
             type="text"
@@ -524,7 +539,7 @@ export const AvatarSelection = memo(() => {
             </div>
             <div className="avatar-card-badge">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </div>
           </motion.div>

@@ -3,8 +3,25 @@ const DIRECT_API_URL = 'https://unifiedapi.vercel.app/v1/chat/completions'
 const API_KEY = 'sk-0000d80ad3c542d29120527e66963a2e'
 const IMGBB_API_KEY = '2de73ee0c32047bad5393bf7db1cea9e'
 
-const useLocalApi = typeof window !== 'undefined' && 
+const useLocalApi = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.protocol === 'http:')
+
+// Get Puter auth token if available
+function getPuterAuthToken() {
+  if (typeof window !== 'undefined' && window.puter && window.puter.authToken) {
+    return window.puter.authToken
+  }
+  // Try to get from puter's internal state
+  if (typeof window !== 'undefined' && window.puter && window.puter.auth) {
+    try {
+      // Puter stores the token internally
+      return window.puter.auth.getToken?.() || window.puter.token || null
+    } catch (e) {
+      return null
+    }
+  }
+  return null
+}
 
 // Global system prompt based on best practices from ChatGPT, Claude, and other major AI assistants
 // Designed to produce consistent, helpful, accurate, and appropriately-sized responses
@@ -64,13 +81,27 @@ const IMAGE_GEN_PROMPT = `\n\nIMPORTANT: This is an image generation request. Pr
 
 async function callApi(model, messages, signal, extraParams = {}) {
   const payload = { model, messages, stream: true, ...extraParams }
-  
+
+  // Get Puter auth token if available
+  const puterToken = getPuterAuthToken()
+
+  // Build headers with optional Puter token
+  const headers = {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+
+  // Add Puter token if available - Vercel API will use this for authentication
+  if (puterToken) {
+    headers['X-Puter-Token'] = puterToken
+  }
+
   // Skip local API in dev mode since Vite doesn't have the serverless function
   if (useLocalApi && window.location.port !== '5173') {
     try {
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal
       })
@@ -82,10 +113,7 @@ async function callApi(model, messages, signal, extraParams = {}) {
 
   return fetch(DIRECT_API_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(payload),
     signal
   })
@@ -93,19 +121,19 @@ async function callApi(model, messages, signal, extraParams = {}) {
 
 function buildConversationHistory(messages, responses, modelKey, supportsVision = true, isThinkingMode = false, avatarPrompt = null) {
   const history = []
-  
+
   // Check if last message has image gen mode enabled
   const lastMessage = messages[messages.length - 1]
   const imageGenAddition = lastMessage?.imageGenMode ? IMAGE_GEN_PROMPT : ''
-  
+
   // Skip system prompt for GPT-5 and Claude in thinking mode (long system prompt disables reasoning_content)
   const skipSystemPrompt = isThinkingMode && (modelKey === 'chatgpt' || modelKey === 'claude')
-  
+
   if (!skipSystemPrompt) {
     // Use avatar prompt if provided, otherwise use global system prompt
     const basePrompt = avatarPrompt || GLOBAL_SYSTEM_PROMPT
     const modelAddition = avatarPrompt ? '' : (MODEL_SPECIFIC_PROMPTS[modelKey] || '')
-    
+
     history.push({
       role: 'system',
       content: basePrompt + modelAddition + imageGenAddition
@@ -116,13 +144,13 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
     if (msg.role === 'user') {
       const hasImages = msg.images && msg.images.length > 0
       const hasFiles = msg.files && msg.files.length > 0
-      
+
       // Build content array if we have images or files
       if ((hasImages && supportsVision) || hasFiles) {
         const content = [
           { type: 'text', text: msg.content }
         ]
-        
+
         // Add images
         if (hasImages && supportsVision) {
           msg.images.forEach(imgUrl => {
@@ -132,7 +160,7 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
             })
           })
         }
-        
+
         // Add files
         if (hasFiles) {
           msg.files.forEach(file => {
@@ -160,12 +188,12 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
             }
           })
         }
-        
+
         history.push({ role: 'user', content })
       } else {
         history.push({ role: 'user', content: msg.content })
       }
-      
+
       // Add previous assistant response if exists (not for the current message being processed)
       const resp = responses?.[modelKey]?.[idx]
       if (resp?.content && !resp.isStreaming) {
@@ -181,12 +209,12 @@ function buildConversationHistory(messages, responses, modelKey, supportsVision 
 export async function uploadImage(file) {
   const formData = new FormData()
   formData.append('image', file)
-  
+
   const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
     method: 'POST',
     body: formData
   })
-  
+
   const data = await response.json()
   if (data.success) {
     return data.data.url
@@ -199,7 +227,7 @@ export async function processFile(file) {
   const fileName = file.name
   const fileType = file.type
   const fileExt = fileName.split('.').pop().toLowerCase()
-  
+
   // For text files, read as text
   if (fileType === 'text/plain' || fileExt === 'txt') {
     const text = await file.text()
@@ -209,7 +237,7 @@ export async function processFile(file) {
       content: text
     }
   }
-  
+
   // For CSV files, read as text
   if (fileType === 'text/csv' || fileExt === 'csv') {
     const text = await file.text()
@@ -219,7 +247,7 @@ export async function processFile(file) {
       content: text
     }
   }
-  
+
   // For PDF files, convert to base64
   if (fileType === 'application/pdf' || fileExt === 'pdf') {
     const base64 = await fileToBase64(file)
@@ -229,12 +257,12 @@ export async function processFile(file) {
       data: base64
     }
   }
-  
+
   // For DOC/DOCX - we'll need to extract text or send as-is
   // OpenRouter may not support these directly, so we'll try base64
-  if (fileExt === 'doc' || fileExt === 'docx' || 
-      fileType === 'application/msword' || 
-      fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+  if (fileExt === 'doc' || fileExt === 'docx' ||
+    fileType === 'application/msword' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const base64 = await fileToBase64(file)
     return {
       type: 'document',
@@ -243,7 +271,7 @@ export async function processFile(file) {
       mimeType: fileType
     }
   }
-  
+
   throw new Error(`Unsupported file type: ${fileType || fileExt}`)
 }
 
@@ -266,7 +294,7 @@ export const SUPPORTED_FILE_TYPES = {
   'text/plain': 'TXT',
   'text/csv': 'CSV',
   '.pdf': 'PDF',
-  '.txt': 'TXT', 
+  '.txt': 'TXT',
   '.csv': 'CSV'
 }
 
@@ -275,12 +303,18 @@ export const FILE_ACCEPT = '.pdf,.txt,.csv'
 // Enhance/improve a prompt using AI
 export async function enhancePrompt(prompt) {
   try {
+    const puterToken = getPuterAuthToken()
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     const response = await fetch(DIRECT_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         model: 'openrouter:anthropic/claude-sonnet-4',
         messages: [{
@@ -318,22 +352,22 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
   const hasFiles = lastMsg?.files && lastMsg.files.length > 0
   const hasWebSearch = lastMsg?.hasWebSearch || lastMsg?.webSearch
   const timeoutMs = hasFiles ? FILE_TIMEOUT_MS : hasWebSearch ? WEB_SEARCH_TIMEOUT_MS : FALLBACK_TIMEOUT_MS
-  
+
   // Check if thinking mode is enabled
   const isThinkingMode = lastMsg?.thinkingMode
-  
+
   // Build conversation history with thinking mode flag and avatar prompt
   const history = buildConversationHistory(messages, responses, modelKey, model.supportsVision, isThinkingMode, avatarPrompt)
-  
+
   // Ensure we have at least one user message
   if (!history.some(m => m.role === 'user')) {
     onUpdate(modelKey, { error: 'No message to send', isStreaming: false })
     return
   }
-  
+
   // Use the selected model ID (already determined by store based on variant and thinking mode)
   const modelId = selectedModelId
-  
+
   // Add reasoning parameters based on model type
   // Native reasoning models (no extra params needed): ChatGPT o-series, Gemini, DeepSeek R1, Kimi K2 Thinking
   // - Grok: Uses reasoning.enabled parameter
@@ -346,7 +380,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
       extraParams.thinking_budget = 10000
     }
   }
-  
+
   let thinkingContent = ''
   let responseContent = ''
   let rawContent = ''
@@ -356,7 +390,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
   let receivedContent = false
   let timeoutTriggered = false
   let timeoutId = null
-  
+
   // Show warning for Grok if thinking mode is enabled (doesn't expose reasoning)
   const grokWarning = showGrokWarning ? `⚠️ Note: ${model.name} doesn't expose thinking/reasoning content in the API. While reasoning is enabled internally to improve response quality, you won't see the thinking process.` : ''
   if (showGrokWarning) {
@@ -379,7 +413,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
 
   try {
     const response = await callApi(modelId, history, signal, extraParams)
-    
+
     // Check if timeout was triggered during the fetch
     if (timeoutTriggered) {
       if (timeoutId) clearTimeout(timeoutId)
@@ -435,7 +469,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
             if (delta?.content) {
               receivedContent = true
               if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-              
+
               // For Claude WITHOUT thinking_budget (legacy <think> tag handling)
               // Only parse <think> tags if we haven't received reasoning_content
               if (modelKey === 'claude' && !thinkingContent && !isThinkingMode) {
@@ -454,20 +488,20 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
                     isStreaming: true
                   })
                   continue
-                } 
+                }
                 // Case 2: After </think> tags (thinking complete)
                 else if (rawContent.includes('</think>')) {
                   const thinkStart = rawContent.indexOf('<think>') + 7
                   const thinkEnd = rawContent.indexOf('</think>')
                   thinkingContent = rawContent.substring(thinkStart, thinkEnd).trim()
                   responseContent = rawContent.substring(thinkEnd + 8).trim()
-                  
+
                   if (!thinkingEndTime && thinkingStartTime) {
                     thinkingEndTime = Date.now()
                   }
-                  
+
                   const thinkingTime = thinkingStartTime && thinkingEndTime
-                    ? Math.round((thinkingEndTime - thinkingStartTime) / 1000) 
+                    ? Math.round((thinkingEndTime - thinkingStartTime) / 1000)
                     : 0
                   onUpdate(modelKey, {
                     thinking: thinkingContent,
@@ -488,9 +522,9 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
               }
 
               responseContent += delta.content
-              
+
               const thinkingTime = thinkingContent && thinkingStartTime && thinkingEndTime
-                ? `${Math.round((thinkingEndTime - thinkingStartTime) / 1000)}s` 
+                ? `${Math.round((thinkingEndTime - thinkingStartTime) / 1000)}s`
                 : null
 
               onUpdate(modelKey, {
@@ -509,10 +543,10 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
 
     // Clear timeout
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-    
+
     // Final update
     const thinkingTime = thinkingContent && thinkingStartTime
-      ? `${Math.round(((thinkingEndTime || Date.now()) - thinkingStartTime) / 1000)}s` 
+      ? `${Math.round(((thinkingEndTime || Date.now()) - thinkingStartTime) / 1000)}s`
       : null
 
     // If no content received, try retry then fallback (but not if aborted)
@@ -533,7 +567,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
 
   } catch (error) {
     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-    
+
     if (error.name === 'AbortError') {
       onUpdate(modelKey, {
         thinking: thinkingContent || null,
@@ -550,7 +584,7 @@ async function streamResponse(modelKey, model, selectedModelId, messages, respon
           return streamResponse(modelKey, model, selectedModelId, messages, responses, signal, onUpdate, 2)
         }
       }
-      
+
       onUpdate(modelKey, {
         error: signal.aborted ? 'Generation stopped.' : error.message,
         isStreaming: false,
@@ -568,7 +602,7 @@ export async function sendToAllModels({ activeModels, models, messages, response
   const promises = activeModels.map((modelKey, idx) => {
     const model = models[modelKey]
     if (!model) return Promise.resolve()
-    
+
     if (hasImages && !model.supportsVision) {
       onUpdate(modelKey, {
         content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
@@ -577,9 +611,9 @@ export async function sendToAllModels({ activeModels, models, messages, response
       })
       return Promise.resolve()
     }
-    
+
     const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
-    
+
     return streamResponse(modelKey, model, modelId, messages, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok', avatarPrompt)
   })
 
@@ -587,13 +621,13 @@ export async function sendToAllModels({ activeModels, models, messages, response
 }
 
 // Web search enhanced version - searches first, then passes context to all models
-export async function sendToAllModelsWithSearch({ 
-  activeModels, 
-  models, 
-  messages, 
-  responses, 
-  controllers, 
-  onUpdate, 
+export async function sendToAllModelsWithSearch({
+  activeModels,
+  models,
+  messages,
+  responses,
+  controllers,
+  onUpdate,
   onSearchProgress,
   onSearchComplete,
   getModelId,
@@ -606,33 +640,33 @@ export async function sendToAllModelsWithSearch({
 
   // Step 1: Perform web search using Perplexity Sonar Pro Search
   onSearchProgress?.({ status: 'searching', round: 1, message: 'Searching the web...' })
-  
+
   let searchContext = ''
   let allSearchResults = []
-  
+
   try {
     // Initial search
     const searchResult = await performWebSearchInternal(userQuery, controllers[0]?.signal)
-    
+
     if (searchResult.success) {
       allSearchResults.push(searchResult)
-      
+
       // Check if AI wants follow-up searches (step-by-step research)
       onSearchProgress?.({ status: 'analyzing', round: 1, message: 'Analyzing results...' })
-      
+
       const followUpQueries = await checkForFollowUpSearchInternal(searchResult.content, userQuery)
-      
+
       if (followUpQueries && followUpQueries.length > 0) {
         onSearchProgress?.({ status: 'searching', round: 2, message: `Performing ${followUpQueries.length} follow-up searches...` })
-        
+
         // Perform follow-up searches
-        const followUpPromises = followUpQueries.map(q => 
+        const followUpPromises = followUpQueries.map(q =>
           performWebSearchInternal(q, controllers[0]?.signal)
         )
         const followUpResults = await Promise.all(followUpPromises)
         allSearchResults.push(...followUpResults.filter(r => r.success))
       }
-      
+
       // Build search context for AI models
       searchContext = buildSearchContextInternal(allSearchResults)
     }
@@ -641,7 +675,7 @@ export async function sendToAllModelsWithSearch({
       console.error('Web search failed:', error)
     }
   }
-  
+
   onSearchComplete?.({
     totalSearches: allSearchResults.length,
     searchResults: allSearchResults,
@@ -664,7 +698,7 @@ export async function sendToAllModelsWithSearch({
   const promises = activeModels.map((modelKey, idx) => {
     const model = models[modelKey]
     if (!model) return Promise.resolve()
-    
+
     if (hasImages && !model.supportsVision) {
       onUpdate(modelKey, {
         content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
@@ -673,9 +707,9 @@ export async function sendToAllModelsWithSearch({
       })
       return Promise.resolve()
     }
-    
+
     const modelId = getModelId ? getModelId(modelKey) : model.defaultVariant
-    
+
     return streamResponse(modelKey, model, modelId, messagesWithSearch, responses, controllers[idx].signal, onUpdate, 0, isThinkingMode && modelKey === 'grok', avatarPrompt)
   })
 
@@ -685,12 +719,18 @@ export async function sendToAllModelsWithSearch({
 // Internal web search function using Perplexity Sonar Pro Search
 async function performWebSearchInternal(query, signal) {
   try {
+    const puterToken = getPuterAuthToken()
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     const response = await fetch(DIRECT_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         model: 'openrouter:perplexity/sonar-pro-search',
         messages: [{
@@ -711,7 +751,7 @@ async function performWebSearchInternal(query, signal) {
 
     const data = await response.json()
     const searchResult = data.choices?.[0]?.message?.content || ''
-    
+
     return {
       success: true,
       content: searchResult,
@@ -728,12 +768,18 @@ async function performWebSearchInternal(query, signal) {
 // Check if AI wants follow-up searches
 async function checkForFollowUpSearchInternal(aiResponse, originalQuery) {
   try {
+    const puterToken = getPuterAuthToken()
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     const response = await fetch(DIRECT_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         model: 'openrouter:google/gemini-2.5-flash-lite',
         messages: [{
@@ -757,7 +803,7 @@ ONLY respond with a valid JSON array, nothing else. Example: ["specific query 1"
 
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content?.trim() || '[]'
-    
+
     try {
       // Extract JSON array from response
       const match = content.match(/\[.*\]/s)
@@ -770,7 +816,7 @@ ONLY respond with a valid JSON array, nothing else. Example: ["specific query 1"
     } catch {
       return null
     }
-    
+
     return null
   } catch {
     return null
@@ -780,29 +826,29 @@ ONLY respond with a valid JSON array, nothing else. Example: ["specific query 1"
 // Build context from search results - keep it concise and clear
 function buildSearchContextInternal(searchResults) {
   if (!searchResults || searchResults.length === 0) return ''
-  
+
   // Keep context concise to avoid overwhelming models (especially Kimi)
   let context = '\n\n---\nWEB SEARCH RESULTS (live data):\n\n'
-  
+
   searchResults.forEach((result, idx) => {
     if (result.success) {
       // Truncate to avoid context length issues
-      const content = result.content.length > 2000 
-        ? result.content.substring(0, 2000) + '...' 
+      const content = result.content.length > 2000
+        ? result.content.substring(0, 2000) + '...'
         : result.content
       context += `${content}\n\n`
     }
   })
-  
+
   context += '---\nUse the search results above to answer. This is current information.'
-  
+
   return context
 }
 
 export async function regenerateSingleModel({ modelKey, model, modelId, messages, responses, onUpdate }) {
   const lastMessage = messages[messages.length - 1]
   const hasImages = lastMessage?.images && lastMessage.images.length > 0
-  
+
   if (hasImages && !model.supportsVision) {
     onUpdate(modelKey, {
       content: `⚠️ ${model.name} doesn't support image/vision input. This model can only process text.`,
@@ -835,17 +881,23 @@ export async function generateChatTitle(messages, currentTitle = null) {
     return currentTitle
   }
 
-  const messageForTitle = isFirstGreeting && userMessages.length >= 2 
-    ? userMessages[1].content 
+  const messageForTitle = isFirstGreeting && userMessages.length >= 2
+    ? userMessages[1].content
     : userMessages[0].content
 
   try {
+    const puterToken = getPuterAuthToken()
+    const headers = {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+    if (puterToken) {
+      headers['X-Puter-Token'] = puterToken
+    }
+
     const response = await fetch(DIRECT_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         model: 'openrouter:anthropic/claude-sonnet-4',
         messages: [{
